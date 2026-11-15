@@ -47,7 +47,6 @@ func TestHealthHandler(t *testing.T) {
 func TestShortenHandler(t *testing.T) {
 	tests := []struct {
 		name         string
-		url          string
 		method       string
 		body         string
 		wantStatus   int
@@ -56,8 +55,8 @@ func TestShortenHandler(t *testing.T) {
 		wantError    string
 	}{
 		{
-			name:       "valid URL returns short code",
-			url:        "/shorten",
+			name: "valid URL returns short code",
+
 			method:     http.MethodPost,
 			body:       `{"url":"https://google.com"}`,
 			wantStatus: http.StatusCreated,
@@ -67,56 +66,56 @@ func TestShortenHandler(t *testing.T) {
 			},
 		},
 		{
-			name:       "invalid JSON",
-			url:        "/shorten",
+			name: "invalid JSON",
+
 			method:     http.MethodPost,
 			body:       `{`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "A valid HTTP or HTTPS URL is required\n",
 		},
 		{
-			name:       "missing URL",
-			url:        "/shorten",
+			name: "missing URL",
+
 			method:     http.MethodPost,
 			body:       `{}`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "A valid HTTP or HTTPS URL is required\n",
 		},
 		{
-			name:       "empty URL",
-			url:        "/shorten",
+			name: "empty URL",
+
 			method:     http.MethodPost,
 			body:       `{"url":""}`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "A valid HTTP or HTTPS URL is required\n",
 		},
 		{
-			name:       "surrounding whitespace",
-			url:        "/shorten",
+			name: "surrounding whitespace",
+
 			method:     http.MethodPost,
 			body:       `{"url": " https://google.com"}`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "A valid HTTP or HTTPS URL is required\n",
 		},
 		{
-			name:       "invalid URL format",
-			url:        "/shorten",
+			name: "invalid URL format",
+
 			method:     http.MethodPost,
 			body:       `{"url": "https://example.com/%zz"}`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "A valid HTTP or HTTPS URL is required\n",
 		},
 		{
-			name:       "unsupported scheme",
-			url:        "/shorten",
+			name: "unsupported scheme",
+
 			method:     http.MethodPost,
 			body:       `{"url": "ftp://example.com"}`,
 			wantStatus: http.StatusBadRequest,
 			wantError:  "A valid HTTP or HTTPS URL is required\n",
 		},
 		{
-			name:       "missing hostname",
-			url:        "/shorten",
+			name: "missing hostname",
+
 			method:     http.MethodPost,
 			body:       `{"url": "https:///path"}`,
 			wantStatus: http.StatusBadRequest,
@@ -124,7 +123,6 @@ func TestShortenHandler(t *testing.T) {
 		},
 		{
 			name:         "URL with credentials",
-			url:          "/shorten",
 			method:       http.MethodPost,
 			body:         `{"url": "https://user:password@example.com"}`,
 			wantStatus:   http.StatusCreated,
@@ -132,7 +130,6 @@ func TestShortenHandler(t *testing.T) {
 		},
 		{
 			name:         "URL with fragment",
-			url:          "/shorten",
 			method:       http.MethodPost,
 			body:         `{"url": "https://example.com/#section"}`,
 			wantStatus:   http.StatusCreated,
@@ -140,15 +137,14 @@ func TestShortenHandler(t *testing.T) {
 		},
 		{
 			name:         "numeric port is not range checked",
-			url:          "/shorten",
 			method:       http.MethodPost,
 			body:         `{"url": "https://example.com:99999"}`,
 			wantStatus:   http.StatusCreated,
 			wantResponse: &ShortenResponse{OriginalURL: "https://example.com:99999", ShortCode: "abc123"},
 		},
 		{
-			name:       "GET is not allowed",
-			url:        "/shorten",
+			name: "GET is not allowed",
+
 			method:     http.MethodGet,
 			wantStatus: http.StatusMethodNotAllowed,
 			wantAllow:  http.MethodPost,
@@ -157,7 +153,7 @@ func TestShortenHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest(tt.method, tt.url, bytes.NewBufferString(tt.body))
+			req := httptest.NewRequest(tt.method, "/shorten", bytes.NewBufferString(tt.body))
 			req.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 
