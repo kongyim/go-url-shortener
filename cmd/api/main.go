@@ -12,7 +12,7 @@ type HealthResponse struct {
 }
 
 type ShortenRequest struct {
-	URL string `json:"url" binding:"required"`
+	URL string `json:"url" binding:"required,http_url"`
 }
 
 type ShortenResponse struct {
@@ -27,12 +27,7 @@ func healthHandler(c *gin.Context) {
 func shortenHandler(c *gin.Context) {
 	var request ShortenRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.String(http.StatusBadRequest, "Invalid JSON\n")
-		return
-	}
-
-	if err := validateURL(request.URL); err != nil {
-		c.String(http.StatusBadRequest, "%s\n", err.Error())
+		c.String(http.StatusBadRequest, "A valid HTTP or HTTPS URL is required\n")
 		return
 	}
 
