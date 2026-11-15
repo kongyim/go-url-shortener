@@ -2,6 +2,13 @@
 
 ## Development commands
 
+Copy `.env.example` to `.env` for local configuration and update the database
+credentials to match your PostgreSQL container. The API uses `godotenv.Load()` at
+startup to load `.env` from the current working directory, with both `make run`
+and `go run ./cmd/api`. Existing environment variables take precedence over values
+in `.env`. A missing `.env` is allowed; other loading errors stop startup.
+Use `KEY='value'` assignments. `.env` is ignored by Git.
+
 - `make run` starts the API.
 - `make test` runs all Go tests.
 - `make migrate-up` creates the `urls` table using migration 001.

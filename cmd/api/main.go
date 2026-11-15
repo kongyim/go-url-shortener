@@ -3,8 +3,10 @@ package main
 import (
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 )
 
 type HealthResponse struct {
@@ -57,6 +59,10 @@ func setupRouter() *gin.Engine {
 }
 
 func main() {
+	if err := godotenv.Load(); err != nil && !os.IsNotExist(err) {
+		log.Fatal("Failed to load .env: ", err)
+	}
+
 	router := setupRouter()
 	log.Println("Starting server on port 8080...")
 	log.Fatal(router.Run(":8080"))

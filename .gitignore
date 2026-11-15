@@ -10,6 +10,7 @@ crash.log
 # Secrets
 .env
 .env.*
+!.env.example
 
 # Go binaries
 /bin/
