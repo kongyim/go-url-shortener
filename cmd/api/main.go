@@ -42,6 +42,13 @@ func setupRouter() *gin.Engine {
 	router := gin.Default()
 	router.HandleMethodNotAllowed = true
 	router.NoMethod(func(c *gin.Context) {
+		switch c.Request.URL.Path {
+		case "/health":
+			c.Header("Allow", http.MethodGet)
+		case "/shorten":
+			c.Header("Allow", http.MethodPost)
+		}
+
 		c.String(http.StatusMethodNotAllowed, "Method not allowed\n")
 	})
 	router.GET("/health", healthHandler)
