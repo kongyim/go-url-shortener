@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"time"
 
 	"go-url-shortener/internal/database"
+	"go-url-shortener/internal/repository"
 
 	"github.com/joho/godotenv"
 )
@@ -30,6 +33,7 @@ func main() {
 	defer db.Close()
 
 	log.Println("Successfully connected to PostgreSQL!")
+	repo := repository.NewURLRepository(db)
 
 	// Step 3.3.1: Insert a URL into PostgreSQL
 
@@ -41,35 +45,42 @@ func main() {
 
 	shortCode := strconv.FormatInt(time.Now().UnixNano(), 36)
 
-	var id int64
-	var originalURL string
-	var createdAt time.Time
-
-	query := `
-        INSERT INTO urls (short_code, original_url)
-        VALUES ($1, $2)
-        RETURNING id, original_url, created_at
-    `
-
-	err = db.QueryRowContext(
+	savedURL, err := repo.Create(
 		ctx,
-		query,
 		shortCode,
 		"https://example.com",
-	).Scan(
-		&id,
-		&originalURL,
-		&createdAt,
 	)
 
 	if err != nil {
-		log.Fatal("Failed to insert URL: ", err)
+		log.Fatal("Failed to create URL: ", err)
 	}
 
-	fmt.Println("Inserted URL successfully!")
-	fmt.Println("ID:", id)
-	fmt.Println("Short Code:", shortCode)
-	fmt.Println("Original URL:", originalURL)
-	fmt.Println("Created At:", createdAt)
+	fmt.Printf("Created URL: %+v\n", savedURL)
 
+	// Step 3.3.2: Find the URL by short code
+
+	// Find the URL we just created
+	foundURL, err := repo.GetByShortCode(
+		ctx,
+		savedURL.ShortCode,
+	)
+
+	if err != nil {
+		log.Fatal("Failed to find URL: ", err)
+	}
+
+	fmt.Printf("Found URL: %+v\n", foundURL)
+
+	_, err = repo.GetByShortCode(
+		ctx,
+		"this-code-does-not-exist",
+	)
+
+	if errors.Is(err, sql.ErrNoRows) {
+		fmt.Println("Correctly detected: URL not found")
+	} else if err != nil {
+		log.Fatal("Unexpected database error: ", err)
+	} else {
+		log.Fatal("Expected URL not found, but got no error")
+	}
 }
