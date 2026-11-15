@@ -2,14 +2,23 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"go-url-shortener/internal/database"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+type urlCreatorFunc func(context.Context, string, string) (*database.URL, error)
+
+func (f urlCreatorFunc) Create(ctx context.Context, shortCode, originalURL string) (*database.URL, error) {
+	return f(ctx, shortCode, originalURL)
+}
 
 func TestHealthHandler(t *testing.T) {
 	tests := []struct {
@@ -37,7 +46,7 @@ func TestHealthHandler(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.url, nil)
 			recorder := httptest.NewRecorder()
 
-			setupRouter().ServeHTTP(recorder, req)
+			setupRouter(nil).ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.wantStatus, recorder.Code)
 		})
@@ -62,7 +71,6 @@ func TestShortenHandler(t *testing.T) {
 			wantStatus: http.StatusCreated,
 			wantResponse: &ShortenResponse{
 				OriginalURL: "https://google.com",
-				ShortCode:   "abc123",
 			},
 		},
 		{
@@ -210,21 +218,21 @@ func TestShortenHandler(t *testing.T) {
 			method:       http.MethodPost,
 			body:         `{"url": "https://user:password@example.com"}`,
 			wantStatus:   http.StatusCreated,
-			wantResponse: &ShortenResponse{OriginalURL: "https://user:password@example.com", ShortCode: "abc123"},
+			wantResponse: &ShortenResponse{OriginalURL: "https://user:password@example.com"},
 		},
 		{
 			name:         "URL with fragment",
 			method:       http.MethodPost,
 			body:         `{"url": "https://example.com/#section"}`,
 			wantStatus:   http.StatusCreated,
-			wantResponse: &ShortenResponse{OriginalURL: "https://example.com/#section", ShortCode: "abc123"},
+			wantResponse: &ShortenResponse{OriginalURL: "https://example.com/#section"},
 		},
 		{
 			name:         "numeric port is not range checked",
 			method:       http.MethodPost,
 			body:         `{"url": "https://example.com:99999"}`,
 			wantStatus:   http.StatusCreated,
-			wantResponse: &ShortenResponse{OriginalURL: "https://example.com:99999", ShortCode: "abc123"},
+			wantResponse: &ShortenResponse{OriginalURL: "https://example.com:99999"},
 		},
 		{
 			name: "GET is not allowed",
@@ -241,7 +249,16 @@ func TestShortenHandler(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 
-			setupRouter().ServeHTTP(recorder, req)
+			var savedURL database.URL
+			createCalls := 0
+			repo := urlCreatorFunc(func(ctx context.Context, shortCode, originalURL string) (*database.URL, error) {
+				createCalls++
+				assert.Equal(t, req.Context(), ctx)
+				savedURL = database.URL{ShortCode: shortCode, OriginalURL: originalURL}
+				return &savedURL, nil
+			})
+
+			setupRouter(repo).ServeHTTP(recorder, req)
 
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Equal(t, tt.wantAllow, recorder.Header().Get("Allow"))
@@ -253,7 +270,13 @@ func TestShortenHandler(t *testing.T) {
 			if tt.wantResponse != nil {
 				var response ShortenResponse
 				require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
-				assert.Equal(t, *tt.wantResponse, response)
+				assert.Equal(t, 1, createCalls)
+				assert.Equal(t, tt.wantResponse.OriginalURL, savedURL.OriginalURL)
+				assert.Regexp(t, `^[0-9a-f]{8}$`, savedURL.ShortCode)
+				assert.Equal(t, savedURL.OriginalURL, response.OriginalURL)
+				assert.Equal(t, savedURL.ShortCode, response.ShortCode)
+			} else {
+				assert.Zero(t, createCalls, "invalid requests must not save a URL")
 			}
 		})
 	}
