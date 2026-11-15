@@ -31,8 +31,8 @@ func shortenHandler(c *gin.Context) {
 		return
 	}
 
-	if request.URL == "" {
-		c.String(http.StatusBadRequest, "URL is required\n")
+	if err := validateURL(request.URL); err != nil {
+		c.String(http.StatusBadRequest, "%s\n", err.Error())
 		return
 	}
 
