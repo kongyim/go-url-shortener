@@ -1,0 +1,22 @@
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+
+# Secrets
+.env
+.env.*
+
+# Go binaries
+/bin/
+*.exe
+*.test
+
+# IDE
+.idea/
+.vscode/
+
