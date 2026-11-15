@@ -8,8 +8,10 @@ import (
 )
 
 type MockURLRepository struct {
-	CreateErr   error
-	CreateCalls int
+	CreateErr     error
+	CreateCalls   int
+	CreateContext context.Context
+	CreatedURL    *database.URL
 }
 
 func (m *MockURLRepository) Create(
@@ -18,6 +20,7 @@ func (m *MockURLRepository) Create(
 	originalURL string,
 ) (*database.URL, error) {
 	m.CreateCalls++
+	m.CreateContext = ctx
 
 	if m.CreateErr != nil {
 		return nil, m.CreateErr
@@ -27,9 +30,10 @@ func (m *MockURLRepository) Create(
 		return nil, errors.New("missing URL data")
 	}
 
-	return &database.URL{
+	m.CreatedURL = &database.URL{
 		ID:          1,
 		ShortCode:   shortCode,
 		OriginalURL: originalURL,
-	}, nil
+	}
+	return m.CreatedURL, nil
 }

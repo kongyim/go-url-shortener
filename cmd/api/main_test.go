@@ -2,23 +2,15 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
-	"go-url-shortener/internal/database"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type urlCreatorFunc func(context.Context, string, string) (*database.URL, error)
-
-func (f urlCreatorFunc) Create(ctx context.Context, shortCode, originalURL string) (*database.URL, error) {
-	return f(ctx, shortCode, originalURL)
-}
 
 func TestHealthHandler(t *testing.T) {
 	tests := []struct {
@@ -46,7 +38,7 @@ func TestHealthHandler(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.url, nil)
 			recorder := httptest.NewRecorder()
 
-			setupRouter(nil).ServeHTTP(recorder, req)
+			setupRouter(&MockURLRepository{}).ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.wantStatus, recorder.Code)
 		})
@@ -62,6 +54,7 @@ func TestShortenHandler(t *testing.T) {
 		wantResponse *ShortenResponse
 		wantAllow    string
 		wantError    string
+		createErr    error
 	}{
 		{
 			name: "valid URL returns short code",
@@ -235,6 +228,14 @@ func TestShortenHandler(t *testing.T) {
 			wantResponse: &ShortenResponse{OriginalURL: "https://example.com:99999"},
 		},
 		{
+			name:       "repository error",
+			method:     http.MethodPost,
+			body:       `{"url":"https://google.com"}`,
+			createErr:  errors.New("database unavailable"),
+			wantStatus: http.StatusInternalServerError,
+			wantError:  "Failed to create URL\n",
+		},
+		{
 			name: "GET is not allowed",
 
 			method:     http.MethodGet,
@@ -249,15 +250,7 @@ func TestShortenHandler(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 
-			var savedURL database.URL
-			createCalls := 0
-			repo := urlCreatorFunc(func(ctx context.Context, shortCode, originalURL string) (*database.URL, error) {
-				createCalls++
-				assert.Equal(t, req.Context(), ctx)
-				savedURL = database.URL{ShortCode: shortCode, OriginalURL: originalURL}
-				return &savedURL, nil
-			})
-
+			repo := &MockURLRepository{CreateErr: tt.createErr}
 			setupRouter(repo).ServeHTTP(recorder, req)
 
 			require.Equal(t, tt.wantStatus, recorder.Code)
@@ -270,13 +263,18 @@ func TestShortenHandler(t *testing.T) {
 			if tt.wantResponse != nil {
 				var response ShortenResponse
 				require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
-				assert.Equal(t, 1, createCalls)
-				assert.Equal(t, tt.wantResponse.OriginalURL, savedURL.OriginalURL)
-				assert.Regexp(t, `^[0-9a-f]{8}$`, savedURL.ShortCode)
-				assert.Equal(t, savedURL.OriginalURL, response.OriginalURL)
-				assert.Equal(t, savedURL.ShortCode, response.ShortCode)
+				assert.Equal(t, 1, repo.CreateCalls)
+				assert.Equal(t, req.Context(), repo.CreateContext)
+				require.NotNil(t, repo.CreatedURL)
+				assert.Equal(t, tt.wantResponse.OriginalURL, repo.CreatedURL.OriginalURL)
+				assert.Regexp(t, `^[0-9a-f]{8}$`, repo.CreatedURL.ShortCode)
+				assert.Equal(t, repo.CreatedURL.OriginalURL, response.OriginalURL)
+				assert.Equal(t, repo.CreatedURL.ShortCode, response.ShortCode)
+			} else if tt.createErr != nil {
+				assert.Equal(t, 1, repo.CreateCalls)
+				assert.Nil(t, repo.CreatedURL)
 			} else {
-				assert.Zero(t, createCalls, "invalid requests must not save a URL")
+				assert.Zero(t, repo.CreateCalls, "invalid requests must not save a URL")
 			}
 		})
 	}
