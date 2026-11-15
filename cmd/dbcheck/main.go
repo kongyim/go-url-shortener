@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
 	"fmt"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"go-url-shortener/internal/database"
@@ -39,11 +39,7 @@ func main() {
 	)
 	defer cancel()
 
-	var randomBytes [6]byte
-	if _, err := rand.Read(randomBytes[:]); err != nil {
-		log.Fatal("Failed to generate short code: ", err)
-	}
-	shortCode := fmt.Sprintf("demo%x", randomBytes)
+	shortCode := strconv.FormatInt(time.Now().UnixNano(), 36)
 
 	var id int64
 	var originalURL string
