@@ -11,6 +11,7 @@ import (
 	"testing"
 
 	"go-url-shortener/internal/database"
+	"go-url-shortener/internal/metrics"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -405,4 +406,70 @@ func TestRedirectHandler(t *testing.T) {
 			assert.Zero(t, repo.CreateCalls)
 		})
 	}
+}
+
+func TestMetricsHandler(t *testing.T) {
+	cacheMetrics := &metrics.CacheMetrics{}
+
+	cacheMetrics.RecordHit()
+	cacheMetrics.RecordHit()
+	cacheMetrics.RecordMiss()
+	cacheMetrics.RecordError()
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/metrics",
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+
+	setupRouter(
+		&MockURLRepository{},
+		nil,
+		cacheMetrics,
+	).ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	var response struct {
+		Hits   uint64 `json:"hits"`
+		Misses uint64 `json:"misses"`
+		Errors uint64 `json:"errors"`
+	}
+
+	require.NoError(
+		t,
+		json.Unmarshal(recorder.Body.Bytes(), &response),
+	)
+
+	assert.Equal(t, uint64(2), response.Hits)
+	assert.Equal(t, uint64(1), response.Misses)
+	assert.Equal(t, uint64(1), response.Errors)
+}
+
+func TestMetricsHandlerInitiallyZero(t *testing.T) {
+	cacheMetrics := &metrics.CacheMetrics{}
+
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/metrics",
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+
+	setupRouter(
+		&MockURLRepository{},
+		nil,
+		cacheMetrics,
+	).ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusOK, recorder.Code)
+
+	assert.JSONEq(t, `{
+        "hits": 0,
+        "misses": 0,
+        "errors": 0
+    }`, recorder.Body.String())
 }

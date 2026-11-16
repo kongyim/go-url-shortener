@@ -20,3 +20,52 @@ func TestCacheMetrics(t *testing.T) {
 	assert.Equal(t, uint64(1), stats.Misses)
 	assert.Equal(t, uint64(1), stats.Errors)
 }
+
+func TestCacheStatsHitRate(t *testing.T) {
+	tests := []struct {
+		name  string
+		stats CacheStats
+		want  float64
+	}{
+		{
+			name:  "no requests",
+			stats: CacheStats{},
+			want:  0,
+		},
+		{
+			name:  "all hits",
+			stats: CacheStats{Hits: 10},
+			want:  100,
+		},
+		{
+			name:  "all misses",
+			stats: CacheStats{Misses: 10},
+			want:  0,
+		},
+		{
+			name: "mixed results",
+			stats: CacheStats{
+				Hits:   80,
+				Misses: 15,
+				Errors: 5,
+			},
+			want: 80,
+		},
+		{
+			name: "fractional percentage",
+			stats: CacheStats{
+				Hits:   1,
+				Misses: 2,
+			},
+			want: 100.0 / 3.0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.stats.HitRate()
+
+			assert.InDelta(t, tt.want, got, 0.000001)
+		})
+	}
+}

@@ -187,6 +187,27 @@ func redirectHandler(c *gin.Context, repo URLReader, urlCache cache.URLCache, ca
 	)
 }
 
+func metricsHandler(
+	c *gin.Context,
+	cacheMetrics *metrics.CacheMetrics,
+) {
+
+	if cacheMetrics == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{
+			"error": "metrics unavailable",
+		})
+		return
+	}
+
+	stats := cacheMetrics.Snapshot()
+
+	c.JSON(http.StatusOK, gin.H{
+		"hits":   stats.Hits,
+		"misses": stats.Misses,
+		"errors": stats.Errors,
+	})
+}
+
 func setupRouter(repo URLRepository, urlCache cache.URLCache, cacheMetrics *metrics.CacheMetrics) *gin.Engine {
 	router := gin.Default()
 	router.HandleMethodNotAllowed = true
@@ -196,9 +217,14 @@ func setupRouter(repo URLRepository, urlCache cache.URLCache, cacheMetrics *metr
 			c.Header("Allow", http.MethodGet)
 		case "/shorten":
 			c.Header("Allow", http.MethodPost)
+		case "/metrics":
+			c.Header("Allow", http.MethodPost)
 		}
 
 		c.String(http.StatusMethodNotAllowed, "Method not allowed\n")
+	})
+	router.GET("/metrics", func(c *gin.Context) {
+		metricsHandler(c, cacheMetrics)
 	})
 	router.GET("/health", healthHandler)
 	router.POST("/shorten", func(c *gin.Context) {

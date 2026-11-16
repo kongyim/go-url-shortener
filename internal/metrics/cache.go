@@ -33,3 +33,13 @@ func (m *CacheMetrics) Snapshot() CacheStats {
 		Errors: m.errors.Load(),
 	}
 }
+
+func (s CacheStats) HitRate() float64 {
+	total := s.Hits + s.Misses + s.Errors
+
+	if total == 0 {
+		return 0
+	}
+
+	return float64(s.Hits) / float64(total) * 100
+}
