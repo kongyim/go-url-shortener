@@ -390,7 +390,7 @@ func TestRedirectHandler(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/abc123", nil)
 			recorder := httptest.NewRecorder()
-			repo := &MockURLRepository{GetByShortCodeResult: tt.result, GetByShortCodeErr: tt.err}
+			repo := &MockURLRepository{FoundURL: tt.result, GetErr: tt.err}
 
 			setupRouter(repo).ServeHTTP(recorder, req)
 
@@ -399,9 +399,9 @@ func TestRedirectHandler(t *testing.T) {
 			if tt.wantBody != "" {
 				assert.Equal(t, tt.wantBody, recorder.Body.String())
 			}
-			assert.Equal(t, 1, repo.GetByShortCodeCalls)
-			assert.Equal(t, "abc123", repo.GetByShortCodeShortCode)
-			assert.Equal(t, req.Context(), repo.GetByShortCodeContext)
+			assert.Equal(t, 1, repo.GetCalls)
+			assert.Equal(t, "abc123", repo.GetShortCode)
+			assert.Equal(t, req.Context(), repo.GetContext)
 			assert.Zero(t, repo.CreateCalls)
 		})
 	}

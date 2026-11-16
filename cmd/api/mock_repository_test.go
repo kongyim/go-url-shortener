@@ -10,16 +10,19 @@ import (
 )
 
 type MockURLRepository struct {
-	CreateErr               error
-	CreateCalls             int
-	CreateContext           context.Context
-	CreatedURL              *database.URL
-	CollisionsRemaining     int
-	GetByShortCodeErr       error
-	GetByShortCodeCalls     int
-	GetByShortCodeContext   context.Context
-	GetByShortCodeShortCode string
-	GetByShortCodeResult    *database.URL
+	// Create
+	CreateErr           error
+	CreateCalls         int
+	CreateContext       context.Context
+	CreatedURL          *database.URL
+	CollisionsRemaining int
+
+	// Read
+	GetErr       error
+	GetCalls     int
+	GetContext   context.Context
+	GetShortCode string
+	FoundURL     *database.URL
 }
 
 var _ URLRepository = (*MockURLRepository)(nil)
@@ -28,18 +31,18 @@ func (m *MockURLRepository) GetByShortCode(
 	ctx context.Context,
 	shortCode string,
 ) (*database.URL, error) {
-	m.GetByShortCodeCalls++
-	m.GetByShortCodeContext = ctx
-	m.GetByShortCodeShortCode = shortCode
+	m.GetCalls++
+	m.GetContext = ctx
+	m.GetShortCode = shortCode
 
-	if m.GetByShortCodeErr != nil {
-		return nil, m.GetByShortCodeErr
+	if m.GetErr != nil {
+		return nil, m.GetErr
 	}
-	if m.GetByShortCodeResult == nil {
+	if m.FoundURL == nil {
 		return nil, sql.ErrNoRows
 	}
 
-	return m.GetByShortCodeResult, nil
+	return m.FoundURL, nil
 }
 
 func (m *MockURLRepository) Create(
