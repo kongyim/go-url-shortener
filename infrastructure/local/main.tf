@@ -40,8 +40,9 @@ resource "docker_volume" "postgres_data" {
 }
 
 resource "docker_container" "postgres" {
-  name  = "go-url-shortener-postgres"
-  image = docker_image.postgres.image_id
+  name    = "go-url-shortener-postgres"
+  image   = docker_image.postgres.image_id
+  restart = "unless-stopped" # 加呢行
 
   env = [
     "POSTGRES_USER=app",
@@ -65,8 +66,9 @@ resource "docker_container" "postgres" {
 }
 
 resource "docker_container" "redis" {
-  name  = "go-url-shortener-redis"
-  image = docker_image.redis.image_id
+  name    = "go-url-shortener-redis"
+  image   = docker_image.redis.image_id
+  restart = "unless-stopped" # 加呢行
 
   ports {
     internal = 6379
