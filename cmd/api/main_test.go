@@ -42,7 +42,7 @@ func TestHealthHandler(t *testing.T) {
 			req := httptest.NewRequest(tt.method, tt.url, nil)
 			recorder := httptest.NewRecorder()
 
-			setupRouter(&MockURLRepository{}).ServeHTTP(recorder, req)
+			setupRouter(&MockURLRepository{}, nil).ServeHTTP(recorder, req)
 
 			assert.Equal(t, tt.wantStatus, recorder.Code)
 		})
@@ -255,7 +255,7 @@ func TestShortenHandler(t *testing.T) {
 			recorder := httptest.NewRecorder()
 
 			repo := &MockURLRepository{CreateErr: tt.createErr}
-			setupRouter(repo).ServeHTTP(recorder, req)
+			setupRouter(repo, nil).ServeHTTP(recorder, req)
 
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Equal(t, tt.wantAllow, recorder.Header().Get("Allow"))
@@ -329,7 +329,7 @@ func TestShortenHandlerRetriesCollision(t *testing.T) {
 			req.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 
-			setupRouter(repo).ServeHTTP(recorder, req)
+			setupRouter(repo, nil).ServeHTTP(recorder, req)
 
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Equal(t, tt.wantCalls, repo.CreateCalls)
@@ -392,7 +392,7 @@ func TestRedirectHandler(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			repo := &MockURLRepository{FoundURL: tt.result, GetErr: tt.err}
 
-			setupRouter(repo).ServeHTTP(recorder, req)
+			setupRouter(repo, nil).ServeHTTP(recorder, req)
 
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Equal(t, tt.wantLocation, recorder.Header().Get("Location"))

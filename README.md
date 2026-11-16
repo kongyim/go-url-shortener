@@ -9,6 +9,13 @@ and `go run ./cmd/api`. Existing environment variables take precedence over valu
 in `.env`. A missing `.env` is allowed; other loading errors stop startup.
 Use `KEY='value'` assignments. `.env` is ignored by Git.
 
+The API uses Redis at `REDIS_ADDR` (default `localhost:6379`) to cache short-code
+lookups for one hour. Successful URL creation also populates the cache. Redirects
+fall back to PostgreSQL on a cache miss or Redis error; cache write failures do
+not fail requests. Each cache operation has a 200 ms timeout with retries disabled.
+PostgreSQL remains the source of truth. Tests use a mock cache and do not require
+a running Redis server.
+
 - `make run` starts the API.
 - `make test` runs all Go tests.
 - `make terraform-init` initializes Terraform in `infrastructure/local`.

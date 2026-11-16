@@ -8,12 +8,15 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
+	"go-url-shortener/internal/cache"
 	"go-url-shortener/internal/database"
 	"go-url-shortener/internal/repository"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
 
 type URLRepository interface {
@@ -54,8 +57,21 @@ func healthHandler(c *gin.Context) {
 }
 
 const maxCreateAttempts = 3
+const urlCacheTTL = time.Hour
+const cacheTimeout = 200 * time.Millisecond
 
-func shortenHandler(c *gin.Context, repo URLRepository) {
+func cacheURL(ctx context.Context, urlCache cache.URLCache, shortCode, originalURL string) {
+	if urlCache == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, cacheTimeout)
+	defer cancel()
+	if err := urlCache.Set(ctx, shortCode, originalURL, urlCacheTTL); err != nil {
+		log.Printf("Cache URL failed: %v", err)
+	}
+}
+
+func shortenHandler(c *gin.Context, repo URLRepository, urlCache cache.URLCache) {
 	var request ShortenRequest
 
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -96,6 +112,8 @@ func shortenHandler(c *gin.Context, repo URLRepository) {
 			return
 		}
 
+		cacheURL(c.Request.Context(), urlCache, savedURL.ShortCode, savedURL.OriginalURL)
+
 		c.JSON(http.StatusCreated, ShortenResponse{
 			ShortCode:   savedURL.ShortCode,
 			OriginalURL: savedURL.OriginalURL,
@@ -115,8 +133,20 @@ func shortenHandler(c *gin.Context, repo URLRepository) {
 	)
 }
 
-func redirectHandler(c *gin.Context, repo URLReader) {
+func redirectHandler(c *gin.Context, repo URLReader, urlCache cache.URLCache) {
 	shortCode := c.Param("shortCode")
+	if urlCache != nil {
+		ctx, cancel := context.WithTimeout(c.Request.Context(), cacheTimeout)
+		originalURL, err := urlCache.Get(ctx, shortCode)
+		cancel()
+		if err == nil && originalURL != "" {
+			c.Redirect(http.StatusFound, originalURL)
+			return
+		}
+		if err != nil && !errors.Is(err, cache.ErrCacheMiss) {
+			log.Printf("Get cached URL failed: %v", err)
+		}
+	}
 
 	foundURL, err := repo.GetByShortCode(c.Request.Context(), shortCode)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -129,13 +159,15 @@ func redirectHandler(c *gin.Context, repo URLReader) {
 		return
 	}
 
+	cacheURL(c.Request.Context(), urlCache, shortCode, foundURL.OriginalURL)
+
 	c.Redirect(
 		http.StatusFound,
 		foundURL.OriginalURL,
 	)
 }
 
-func setupRouter(repo URLRepository) *gin.Engine {
+func setupRouter(repo URLRepository, urlCache cache.URLCache) *gin.Engine {
 	router := gin.Default()
 	router.HandleMethodNotAllowed = true
 	router.NoMethod(func(c *gin.Context) {
@@ -150,14 +182,14 @@ func setupRouter(repo URLRepository) *gin.Engine {
 	})
 	router.GET("/health", healthHandler)
 	router.POST("/shorten", func(c *gin.Context) {
-		shortenHandler(c, repo)
+		shortenHandler(c, repo, urlCache)
 	})
 	router.GET("/shorten", func(c *gin.Context) {
 		c.Header("Allow", http.MethodPost)
 		c.String(http.StatusMethodNotAllowed, "Method not allowed\n")
 	})
 	router.GET("/:shortCode", func(c *gin.Context) {
-		redirectHandler(c, repo)
+		redirectHandler(c, repo, urlCache)
 	})
 	return router
 }
@@ -182,8 +214,22 @@ func main() {
 
 	// Create repository
 	repo := repository.NewURLRepository(db)
+	addr := os.Getenv("REDIS_ADDR")
+	if addr == "" {
+		addr = "localhost:6379"
+	}
+	client := redis.NewClient(&redis.Options{
+		Addr:                  addr,
+		DialTimeout:           cacheTimeout,
+		ReadTimeout:           cacheTimeout,
+		WriteTimeout:          cacheTimeout,
+		ContextTimeoutEnabled: true,
+		MaxRetries:            -1,
+	})
+	defer client.Close()
+	urlCache := cache.NewRedisURLCache(client)
 
-	router := setupRouter(repo)
+	router := setupRouter(repo, urlCache)
 	log.Println("Starting server on port 8080...")
 	log.Fatal(router.Run(":8080"))
 }
