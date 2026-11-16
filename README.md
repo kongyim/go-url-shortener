@@ -171,6 +171,29 @@ guarantee cache misses if other requests concurrently repopulate the same Redis
 key. It measures the cache-miss HTTP path, including Redis GET, PostgreSQL lookup,
 and Redis SET, rather than a PostgreSQL-only baseline.
 
+### Generating the Benchmark Report
+
+After running both benchmark scripts, generate the summary report from the
+project root:
+
+```sh
+./scripts/benchmark-report.sh
+```
+
+The script reads `cache-hit.txt` and `cache-miss.txt` and calculates:
+
+- Average HTTP response latency
+- Median latency (p50)
+- p95 latency using the nearest-rank method
+- Average latency ratio between uncached and cached redirects (Cache Miss / Cache Hit)
+
+All latency values are reported in milliseconds. The latency ratio is
+dimensionless.
+
+The comparison measures the application-level redirect paths under local,
+sequential HTTP requests. It does not represent a standalone Redis versus
+PostgreSQL benchmark.
+
 ## Formatting
 
 Run `npm install` to install the project's Prettier version.
