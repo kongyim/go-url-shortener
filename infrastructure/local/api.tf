@@ -33,6 +33,7 @@ resource "docker_container" "api" {
   ports {
     internal = 8080
     external = 8080
+    ip       = "127.0.0.1"
   }
 
   networks_advanced {

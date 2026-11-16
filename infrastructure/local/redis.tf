@@ -11,6 +11,7 @@ resource "docker_container" "redis" {
   ports {
     internal = 6379
     external = 6379
+    ip       = "127.0.0.1"
   }
 
   networks_advanced {

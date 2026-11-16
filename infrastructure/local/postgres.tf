@@ -3,11 +3,6 @@ resource "docker_image" "postgres" {
   name = "postgres:16"
 }
 
-# Keep the previous volume so switching to a bind mount does not delete old data.
-resource "docker_volume" "postgres_data" {
-  name = "go-url-shortener-postgres-data"
-}
-
 resource "docker_container" "postgres" {
   name    = "go-url-shortener-postgres"
   image   = docker_image.postgres.image_id
@@ -22,6 +17,7 @@ resource "docker_container" "postgres" {
   ports {
     internal = 5432
     external = 5432
+    ip       = "127.0.0.1"
   }
 
   networks_advanced {
