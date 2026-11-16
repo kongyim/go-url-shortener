@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"go-url-shortener/internal/database"
 	"go-url-shortener/internal/metrics"
@@ -415,6 +416,8 @@ func TestMetricsHandler(t *testing.T) {
 	cacheMetrics.RecordHit()
 	cacheMetrics.RecordMiss()
 	cacheMetrics.RecordError()
+	cacheMetrics.RecordRedisGETDuration(1500 * time.Microsecond)
+	cacheMetrics.RecordRedisGETDuration(3 * time.Millisecond)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -433,10 +436,12 @@ func TestMetricsHandler(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var response struct {
-		Hits           uint64  `json:"hits"`
-		Misses         uint64  `json:"misses"`
-		Errors         uint64  `json:"errors"`
-		HitRatePercent float64 `json:"hitRatePercent"`
+		Hits                     uint64  `json:"hits"`
+		Misses                   uint64  `json:"misses"`
+		Errors                   uint64  `json:"errors"`
+		HitRatePercent           float64 `json:"hitRatePercent"`
+		RedisGetCount            uint64  `json:"redisGetCount"`
+		AverageRedisGetLatencyMs float64 `json:"averageRedisGetLatencyMs"`
 	}
 
 	require.NoError(
@@ -448,7 +453,8 @@ func TestMetricsHandler(t *testing.T) {
 	assert.Equal(t, uint64(1), response.Misses)
 	assert.Equal(t, uint64(1), response.Errors)
 	assert.InDelta(t, 50.0, response.HitRatePercent, 0.000001)
-
+	assert.Equal(t, uint64(2), response.RedisGetCount)
+	assert.InDelta(t, 2.25, response.AverageRedisGetLatencyMs, 0.000001)
 }
 
 func TestMetricsHandlerInitiallyZero(t *testing.T) {
@@ -474,6 +480,8 @@ func TestMetricsHandlerInitiallyZero(t *testing.T) {
         "hits": 0,
         "misses": 0,
         "errors": 0,
-				"hitRatePercent": 0
+        "hitRatePercent": 0,
+        "redisGetCount": 0,
+        "averageRedisGetLatencyMs": 0
     }`, recorder.Body.String())
 }

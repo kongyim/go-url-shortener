@@ -208,10 +208,12 @@ func metricsHandler(
 	stats := cacheMetrics.Snapshot()
 
 	c.JSON(http.StatusOK, gin.H{
-		"hits":           stats.Hits,
-		"misses":         stats.Misses,
-		"errors":         stats.Errors,
-		"hitRatePercent": stats.HitRate(),
+		"hits":                     stats.Hits,
+		"misses":                   stats.Misses,
+		"errors":                   stats.Errors,
+		"hitRatePercent":           stats.HitRate(),
+		"redisGetCount":            stats.RedisGETCount,
+		"averageRedisGetLatencyMs": stats.AverageRedisGETLatencyMS(),
 	})
 }
 
