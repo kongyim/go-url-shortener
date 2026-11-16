@@ -433,9 +433,10 @@ func TestMetricsHandler(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var response struct {
-		Hits   uint64 `json:"hits"`
-		Misses uint64 `json:"misses"`
-		Errors uint64 `json:"errors"`
+		Hits           uint64  `json:"hits"`
+		Misses         uint64  `json:"misses"`
+		Errors         uint64  `json:"errors"`
+		HitRatePercent float64 `json:"hit_rate_percent"`
 	}
 
 	require.NoError(
@@ -446,6 +447,8 @@ func TestMetricsHandler(t *testing.T) {
 	assert.Equal(t, uint64(2), response.Hits)
 	assert.Equal(t, uint64(1), response.Misses)
 	assert.Equal(t, uint64(1), response.Errors)
+	assert.InDelta(t, 50.0, response.HitRatePercent, 0.000001)
+
 }
 
 func TestMetricsHandlerInitiallyZero(t *testing.T) {
@@ -470,6 +473,7 @@ func TestMetricsHandlerInitiallyZero(t *testing.T) {
 	assert.JSONEq(t, `{
         "hits": 0,
         "misses": 0,
-        "errors": 0
+        "errors": 0,
+				"hit_rate_percent": 0
     }`, recorder.Body.String())
 }
