@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"go-url-shortener/internal/database"
@@ -9,11 +10,36 @@ import (
 )
 
 type MockURLRepository struct {
-	CreateErr           error
-	CreateCalls         int
-	CreateContext       context.Context
-	CreatedURL          *database.URL
-	CollisionsRemaining int
+	CreateErr               error
+	CreateCalls             int
+	CreateContext           context.Context
+	CreatedURL              *database.URL
+	CollisionsRemaining     int
+	GetByShortCodeErr       error
+	GetByShortCodeCalls     int
+	GetByShortCodeContext   context.Context
+	GetByShortCodeShortCode string
+	GetByShortCodeResult    *database.URL
+}
+
+var _ URLRepository = (*MockURLRepository)(nil)
+
+func (m *MockURLRepository) GetByShortCode(
+	ctx context.Context,
+	shortCode string,
+) (*database.URL, error) {
+	m.GetByShortCodeCalls++
+	m.GetByShortCodeContext = ctx
+	m.GetByShortCodeShortCode = shortCode
+
+	if m.GetByShortCodeErr != nil {
+		return nil, m.GetByShortCodeErr
+	}
+	if m.GetByShortCodeResult == nil {
+		return nil, sql.ErrNoRows
+	}
+
+	return m.GetByShortCodeResult, nil
 }
 
 func (m *MockURLRepository) Create(

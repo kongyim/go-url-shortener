@@ -15,11 +15,23 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type URLRepository interface {
+	URLCreator
+	URLReader
+}
+
 type URLCreator interface {
 	Create(
 		ctx context.Context,
 		shortCode string,
 		originalURL string,
+	) (*database.URL, error)
+}
+
+type URLReader interface {
+	GetByShortCode(
+		ctx context.Context,
+		shortCode string,
 	) (*database.URL, error)
 }
 
@@ -42,7 +54,7 @@ func healthHandler(c *gin.Context) {
 
 const maxCreateAttempts = 3
 
-func shortenHandler(c *gin.Context, repo URLCreator) {
+func shortenHandler(c *gin.Context, repo URLRepository) {
 	var request ShortenRequest
 
 	if err := c.ShouldBindJSON(&request); err != nil {
@@ -114,7 +126,7 @@ func redirectHandler(c *gin.Context) {
 	)
 }
 
-func setupRouter(repo URLCreator) *gin.Engine {
+func setupRouter(repo URLRepository) *gin.Engine {
 	router := gin.Default()
 	router.HandleMethodNotAllowed = true
 	router.NoMethod(func(c *gin.Context) {
