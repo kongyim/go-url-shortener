@@ -436,7 +436,7 @@ func TestMetricsHandler(t *testing.T) {
 		Hits           uint64  `json:"hits"`
 		Misses         uint64  `json:"misses"`
 		Errors         uint64  `json:"errors"`
-		HitRatePercent float64 `json:"hit_rate_percent"`
+		HitRatePercent float64 `json:"hitRatePercent"`
 	}
 
 	require.NoError(
@@ -474,6 +474,6 @@ func TestMetricsHandlerInitiallyZero(t *testing.T) {
         "hits": 0,
         "misses": 0,
         "errors": 0,
-				"hit_rate_percent": 0
+				"hitRatePercent": 0
     }`, recorder.Body.String())
 }

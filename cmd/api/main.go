@@ -49,8 +49,8 @@ type ShortenRequest struct {
 }
 
 type ShortenResponse struct {
-	ShortCode   string `json:"short_code"`
-	OriginalURL string `json:"original_url"`
+	ShortCode   string `json:"shortCode"`
+	OriginalURL string `json:"originalUrl"`
 }
 
 func healthHandler(c *gin.Context) {
@@ -202,10 +202,10 @@ func metricsHandler(
 	stats := cacheMetrics.Snapshot()
 
 	c.JSON(http.StatusOK, gin.H{
-		"hits":             stats.Hits,
-		"misses":           stats.Misses,
-		"errors":           stats.Errors,
-		"hit_rate_percent": stats.HitRate(),
+		"hits":           stats.Hits,
+		"misses":         stats.Misses,
+		"errors":         stats.Errors,
+		"hitRatePercent": stats.HitRate(),
 	})
 }
 
