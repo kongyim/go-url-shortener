@@ -11,6 +11,7 @@ import (
 
 	"go-url-shortener/internal/cache"
 	"go-url-shortener/internal/database"
+	"go-url-shortener/internal/metrics"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,12 +53,17 @@ func TestRedirectHandlerCache(t *testing.T) {
 		wantStatus int
 		wantReads  int
 		wantWrites int
+
+		wantHits   uint64
+		wantMisses uint64
+		wantErrors uint64
 	}{
-		{name: "hit skips database", cached: "https://cached.example/path", wantStatus: 302},
-		{name: "miss populates cache", getErr: cache.ErrCacheMiss, wantStatus: 302, wantReads: 1, wantWrites: 1},
-		{name: "read failure falls back", getErr: errors.New("redis unavailable"), wantStatus: 302, wantReads: 1, wantWrites: 1},
-		{name: "write failure still redirects", getErr: cache.ErrCacheMiss, setErr: errors.New("redis unavailable"), wantStatus: 302, wantReads: 1, wantWrites: 1},
-		{name: "missing URL is not cached", getErr: cache.ErrCacheMiss, missing: true, wantStatus: 404, wantReads: 1},
+		{name: "hit skips database", cached: "https://cached.example/path", wantStatus: 302, wantHits: 1},
+		{name: "empty cached value counts as miss", wantStatus: 302, wantReads: 1, wantWrites: 1, wantMisses: 1},
+		{name: "miss populates cache", getErr: cache.ErrCacheMiss, wantStatus: 302, wantReads: 1, wantWrites: 1, wantMisses: 1},
+		{name: "read failure falls back", getErr: errors.New("redis unavailable"), wantStatus: 302, wantReads: 1, wantWrites: 1, wantErrors: 1},
+		{name: "write failure still redirects", getErr: cache.ErrCacheMiss, setErr: errors.New("redis unavailable"), wantStatus: 302, wantReads: 1, wantWrites: 1, wantMisses: 1},
+		{name: "missing URL is not cached", getErr: cache.ErrCacheMiss, missing: true, wantStatus: 404, wantReads: 1, wantMisses: 1},
 		{
 			name:       "database error after cache miss is not cached",
 			getErr:     cache.ErrCacheMiss,
@@ -65,6 +71,7 @@ func TestRedirectHandlerCache(t *testing.T) {
 			wantStatus: http.StatusInternalServerError,
 			wantReads:  1,
 			wantWrites: 0,
+			wantMisses: 1,
 		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
@@ -74,7 +81,13 @@ func TestRedirectHandlerCache(t *testing.T) {
 			}
 			urlCache := &mockURLCache{value: tt.cached, getErr: tt.getErr, setErr: tt.setErr}
 			recorder := httptest.NewRecorder()
-			setupRouter(repo, urlCache).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/abc123", nil))
+			cacheMetrics := &metrics.CacheMetrics{}
+			setupRouter(repo, urlCache, cacheMetrics).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/abc123", nil))
+
+			stats := cacheMetrics.Snapshot()
+			assert.Equal(t, tt.wantHits, stats.Hits, "cache hits")
+			assert.Equal(t, tt.wantMisses, stats.Misses, "cache misses")
+			assert.Equal(t, tt.wantErrors, stats.Errors, "cache lookup errors")
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Equal(t, 1, urlCache.getCalls)
 			assert.Equal(t, "abc123", urlCache.getKey)
@@ -118,7 +131,7 @@ func TestShortenHandlerCache(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			setupRouter(repo, urlCache).ServeHTTP(recorder, req)
+			setupRouter(repo, urlCache, nil).ServeHTTP(recorder, req)
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Zero(t, urlCache.getCalls)
 			assert.Equal(t, tt.wantWrites, urlCache.setCalls)

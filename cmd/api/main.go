@@ -12,6 +12,7 @@ import (
 
 	"go-url-shortener/internal/cache"
 	"go-url-shortener/internal/database"
+	"go-url-shortener/internal/metrics"
 	"go-url-shortener/internal/repository"
 
 	"github.com/gin-gonic/gin"
@@ -133,18 +134,37 @@ func shortenHandler(c *gin.Context, repo URLRepository, urlCache cache.URLCache)
 	)
 }
 
-func redirectHandler(c *gin.Context, repo URLReader, urlCache cache.URLCache) {
+func redirectHandler(c *gin.Context, repo URLReader, urlCache cache.URLCache, cacheMetrics *metrics.CacheMetrics) {
 	shortCode := c.Param("shortCode")
 	if urlCache != nil {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), cacheTimeout)
 		originalURL, err := urlCache.Get(ctx, shortCode)
 		cancel()
-		if err == nil && originalURL != "" {
+		switch {
+		case err == nil && originalURL != "":
+			if cacheMetrics != nil {
+				cacheMetrics.RecordHit()
+			}
+
 			c.Redirect(http.StatusFound, originalURL)
 			return
-		}
-		if err != nil && !errors.Is(err, cache.ErrCacheMiss) {
+
+		case errors.Is(err, cache.ErrCacheMiss):
+			if cacheMetrics != nil {
+				cacheMetrics.RecordMiss()
+			}
+
+		case err != nil:
+			if cacheMetrics != nil {
+				cacheMetrics.RecordError()
+			}
+
 			log.Printf("Get cached URL failed: %v", err)
+
+		default:
+			if cacheMetrics != nil {
+				cacheMetrics.RecordMiss()
+			}
 		}
 	}
 
@@ -167,7 +187,7 @@ func redirectHandler(c *gin.Context, repo URLReader, urlCache cache.URLCache) {
 	)
 }
 
-func setupRouter(repo URLRepository, urlCache cache.URLCache) *gin.Engine {
+func setupRouter(repo URLRepository, urlCache cache.URLCache, cacheMetrics *metrics.CacheMetrics) *gin.Engine {
 	router := gin.Default()
 	router.HandleMethodNotAllowed = true
 	router.NoMethod(func(c *gin.Context) {
@@ -189,7 +209,7 @@ func setupRouter(repo URLRepository, urlCache cache.URLCache) *gin.Engine {
 		c.String(http.StatusMethodNotAllowed, "Method not allowed\n")
 	})
 	router.GET("/:shortCode", func(c *gin.Context) {
-		redirectHandler(c, repo, urlCache)
+		redirectHandler(c, repo, urlCache, cacheMetrics)
 	})
 	return router
 }
@@ -229,7 +249,9 @@ func main() {
 	defer client.Close()
 	urlCache := cache.NewRedisURLCache(client)
 
-	router := setupRouter(repo, urlCache)
+	cacheMetrics := &metrics.CacheMetrics{}
+
+	router := setupRouter(repo, urlCache, cacheMetrics)
 	log.Println("Starting server on port 8080...")
 	log.Fatal(router.Run(":8080"))
 }
