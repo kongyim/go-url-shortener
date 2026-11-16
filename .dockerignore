@@ -1,0 +1,17 @@
+.git
+.gitignore
+
+.env
+.env.*
+
+!.env.example
+
+cache-hit.txt
+cache-miss.txt
+benchmark-results.txt
+
+*.log
+*.tmp
+
+cmd/latencycheck/
+cmd/shutdowncheck/
