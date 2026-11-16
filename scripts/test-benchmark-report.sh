@@ -1,3 +1,4 @@
+
 #!/usr/bin/env bash
 
 set -euo pipefail
@@ -10,29 +11,25 @@ trap 'rm -rf "$TEST_DIR"' EXIT
 
 cd "$TEST_DIR"
 
-# Create 100 fixed samples per dataset.
-for ((i = 1; i <= 100; i++)); do
-    echo "0.001" >> cache-hit.txt
-    echo "0.005" >> cache-miss.txt
-done
+# Prepare clean test data before each test.
+setup_fixture() {
+    : > cache-hit.txt
+    : > cache-miss.txt
 
-# Execute the report in an isolated directory.
-report=$(bash "$SCRIPT_DIR/benchmark-report.sh")
-
-# Verify the calculated speedup.
-if [[ "$report" != *"5.00x"* ]]; then
-    echo "FAIL: Expected 5.00x average latency ratio" >&2
-    exit 1
-fi
-
-echo "PASS: Benchmark report calculates 5.00x ratio"
+    for ((i = 1; i <= 100; i++)); do
+        echo "0.001" >> cache-hit.txt
+        echo "0.005" >> cache-miss.txt
+    done
+}
 
 expect_failure() {
     local test_name="$1"
     local expected_error="$2"
 
     local status=0
-    bash "$SCRIPT_DIR/benchmark-report.sh" > output.txt 2> error.txt || status=$?
+
+    bash "$SCRIPT_DIR/benchmark-report.sh" \
+        > output.txt 2> error.txt || status=$?
 
     if [[ "$status" != "1" ]]; then
         echo "FAIL: $test_name expected exit 1, got $status" >&2
@@ -55,22 +52,54 @@ expect_failure() {
     echo "PASS: $test_name"
 }
 
-# Test: Invalid latency value
-for ((i = 1; i <= 100; i++)); do
-    if ((i == 50)); then
-        echo "NaN"
-    else
-        echo "0.001"
-    fi
-done > cache-hit.txt
+# Test 1: Happy path
+setup_fixture
 
-expect_failure "invalid latency" "Invalid latency value"
+report=$(bash "$SCRIPT_DIR/benchmark-report.sh")
 
-# Test: Incorrect sample count
-: > cache-hit.txt
+if [[ "$report" != *"5.00x"* ]]; then
+    echo "FAIL: Expected 5.00x average latency ratio" >&2
+    exit 1
+fi
 
-for ((i = 1; i <= 99; i++)); do
-    echo "0.001" >> cache-hit.txt
-done
+echo "PASS: Benchmark report calculates 5.00x ratio"
 
-expect_failure "incorrect sample count" "Both files must contain exactly 100 latency samples"
+# Test 2: Invalid latency
+setup_fixture
+
+awk 'NR == 50 { print "NaN"; next } { print }' \
+    cache-hit.txt > cache-hit.tmp
+
+mv cache-hit.tmp cache-hit.txt
+
+expect_failure \
+    "invalid latency" \
+    "Invalid latency value"
+
+# Test 3: Incorrect sample count
+setup_fixture
+
+head -n 99 cache-hit.txt > cache-hit.tmp
+mv cache-hit.tmp cache-hit.txt
+
+expect_failure \
+    "incorrect sample count" \
+    "Both files must contain exactly 100 latency samples"
+
+# Test 4: Missing Cache Hit file
+setup_fixture
+
+rm cache-hit.txt
+
+expect_failure \
+    "missing Cache Hit file" \
+    "Missing file: cache-hit.txt"
+
+# Test 5: Missing Cache Miss file
+setup_fixture
+
+rm cache-miss.txt
+
+expect_failure \
+    "missing Cache Miss file" \
+    "Missing file: cache-miss.txt"
