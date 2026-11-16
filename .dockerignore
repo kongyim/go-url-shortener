@@ -1,6 +1,9 @@
 .git
 .gitignore
 
+# Local infrastructure, Terraform state, and PostgreSQL data are not build inputs.
+infrastructure/
+
 .env
 .env.*
 

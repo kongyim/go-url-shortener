@@ -1,38 +1,6 @@
-
-terraform {
-  required_version = ">= 1.5.0"
-
-  required_providers {
-    docker = {
-      source  = "kreuzwerker/docker"
-      version = "~> 4.6.0"
-    }
-  }
-}
-
-provider "docker" {}
-
-# Private network for our local services
-resource "docker_network" "app" {
-  name = "go-url-shortener-network"
-}
-
 # PostgreSQL image
 resource "docker_image" "postgres" {
   name = "postgres:16"
-}
-
-# Redis image
-resource "docker_image" "redis" {
-  name = "redis:7"
-}
-
-
-
-
-variable "postgres_password" {
-  type      = string
-  sensitive = true
 }
 
 # Keep the previous volume so switching to a bind mount does not delete old data.
@@ -63,20 +31,5 @@ resource "docker_container" "postgres" {
   volumes {
     host_path      = abspath("${path.module}/data/postgres")
     container_path = "/var/lib/postgresql/data"
-  }
-}
-
-resource "docker_container" "redis" {
-  name    = "go-url-shortener-redis"
-  image   = docker_image.redis.image_id
-  restart = "unless-stopped" # 加呢行
-
-  ports {
-    internal = 6379
-    external = 6379
-  }
-
-  networks_advanced {
-    name = docker_network.app.name
   }
 }
