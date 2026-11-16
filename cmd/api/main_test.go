@@ -275,6 +275,7 @@ func TestShortenHandler(t *testing.T) {
 				assert.Nil(t, repo.CreatedURL)
 			} else {
 				assert.Zero(t, repo.CreateCalls, "invalid requests must not save a URL")
+				assert.Nil(t, repo.CreatedURL)
 			}
 		})
 	}
