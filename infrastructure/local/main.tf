@@ -35,6 +35,7 @@ variable "postgres_password" {
   sensitive = true
 }
 
+# Keep the previous volume so switching to a bind mount does not delete old data.
 resource "docker_volume" "postgres_data" {
   name = "go-url-shortener-postgres-data"
 }
@@ -60,7 +61,7 @@ resource "docker_container" "postgres" {
   }
 
   volumes {
-    volume_name    = docker_volume.postgres_data.name
+    host_path      = abspath("${path.module}/data/postgres")
     container_path = "/var/lib/postgresql/data"
   }
 }

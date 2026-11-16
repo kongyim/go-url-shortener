@@ -1,4 +1,14 @@
-.PHONY: run test migrate-up migrate-down
+.PHONY: run test migrate-up migrate-down terraform-init terraform-apply terraform-plan
+
+terraform-init:
+	terraform -chdir=infrastructure/local init
+
+terraform-apply:
+	mkdir -p infrastructure/local/data/postgres
+	terraform -chdir=infrastructure/local apply
+
+terraform-plan:
+	terraform -chdir=infrastructure/local plan
 
 run:
 	go run ./cmd/api

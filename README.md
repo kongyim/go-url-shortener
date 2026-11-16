@@ -11,12 +11,22 @@ Use `KEY='value'` assignments. `.env` is ignored by Git.
 
 - `make run` starts the API.
 - `make test` runs all Go tests.
+- `make terraform-init` initializes Terraform in `infrastructure/local`.
+- `make terraform-plan` previews infrastructure changes.
+- `make terraform-apply` creates the local PostgreSQL data directory and applies infrastructure changes.
 - `make migrate-up` creates the `urls` table using migration 001.
 - `make migrate-down` drops the `urls` table and its data using migration 001.
 
 Migration commands require the `go-url-shortener-postgres` Docker container to be
 running. They execute the specified SQL files directly and do not track migration
 history; running `make migrate-up` again skips creation if the table already exists.
+
+PostgreSQL stores its data in `infrastructure/local/data/postgres/`, which is
+ignored by Git and mounted at `/var/lib/postgresql/data` in the container.
+When running Terraform directly, create this directory before applying.
+Switching from the previous Docker volume starts a fresh database; existing data
+is not copied automatically. The previous `go-url-shortener-postgres-data` volume
+remains managed by Terraform to preserve that data during the switch.
 
 ## Formatting
 

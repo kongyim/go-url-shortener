@@ -7,6 +7,9 @@
 *.tfvars.json
 crash.log
 
+# Local PostgreSQL data
+/infrastructure/local/data/
+
 # Secrets
 .env
 .env.*
