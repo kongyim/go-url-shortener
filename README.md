@@ -114,6 +114,27 @@ The command prints JSON measurements and speedup ratios. It connects directly to
 the backends, so the HTTP API does not need to be running. Results will vary by
 environment and run.
 
+### Running Both HTTP Benchmarks Automatically
+
+Start the API at `http://localhost:8080`, PostgreSQL (with the `urls` table), and
+the `go-url-shortener-redis` container. The command requires Bash, curl, jq, Docker,
+and awk; Redis CLI must be available inside the Redis container.
+
+```sh
+./scripts/benchmark.sh
+```
+
+This creates a short URL for `https://example.com` using `POST /shorten`, requires
+HTTP 201 and a valid `shortCode`, then runs the cache-hit and cache-miss benchmarks
+with that same code. It prints the report only after both benchmarks succeed.
+Results are staged in a temporary directory; the project-root `cache-hit.txt` and
+`cache-miss.txt` files are replaced only after both benchmarks and report validation
+succeed. An earlier failure stops the workflow and preserves previous results.
+
+Each run creates one PostgreSQL URL record, which is retained even if a later step
+fails. Successful creation also populates Redis. Redirect destinations are not
+visited. The individual scripts below remain available for manual runs.
+
 ### Reproducing the Cache Hit Benchmark
 
 Start the API, PostgreSQL, and Redis services, then create a short URL using
@@ -183,7 +204,7 @@ project root:
 ./scripts/benchmark-report.sh
 ```
 
-The script requires exactly 100 nonnegative numeric samples in each of
+The script requires exactly 100 positive numeric samples in each of
 `cache-hit.txt` and `cache-miss.txt`, with one value per line and a positive cache
 hit average. Invalid or incomplete inputs fail without printing a report. Since
 failed benchmark runs preserve previous results, confirm both runs completed

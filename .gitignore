@@ -25,3 +25,6 @@ crash.log
 .vscode/
 .DS_Store
 
+# Generated benchmark results
+/cache-hit.txt
+/cache-miss.txt

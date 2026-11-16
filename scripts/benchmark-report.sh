@@ -21,7 +21,7 @@ awk '
 }
 
 {
-    if (NF != 1 || $1 !~ /^[0-9]+([.][0-9]+)?$/) {
+    if (NF != 1 || $1 !~ /^[0-9]+([.][0-9]+)?$/ || ($1 + 0) <= 0) {
         print "Invalid latency value: " $0 > "/dev/stderr"
         invalid = 1
         exit 1
