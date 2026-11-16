@@ -1,4 +1,4 @@
-.PHONY: run test migrate-up migrate-down terraform-init terraform-apply terraform-plan
+.PHONY: run test migrate-up migrate-down terraform-init terraform-apply terraform-plan terraform-destroy
 
 terraform-init:
 	terraform -chdir=infrastructure/local init
@@ -9,6 +9,9 @@ terraform-apply:
 
 terraform-plan:
 	terraform -chdir=infrastructure/local plan
+
+terraform-destroy:
+	terraform -chdir=infrastructure/local destroy
 
 run:
 	go run ./cmd/api
