@@ -1,5 +1,116 @@
 # Go URL Shortener
 
+## Quick Start (Local Docker + Terraform)
+
+### Prerequisites
+
+- Docker Engine or Docker Desktop, running and accessible to Terraform
+- Terraform CLI (1.5.0 or newer)
+- Git
+- curl for the API checks
+
+### 1. Clone the repository
+
+```sh
+git clone https://github.com/kongyim/go-url-shortener.git
+cd go-url-shortener
+```
+
+### 2. Configure local environment
+
+Create `infrastructure/local/terraform.tfvars`, using the variables declared in
+`infrastructure/local/variables.tf`:
+
+```hcl
+postgres_password = "choose-a-local-development-password"
+```
+
+Do not commit `terraform.tfvars`, `.env`, or Terraform state files. Terraform
+passes the API configuration into the container; a local `.env` file is not
+required for this Docker workflow.
+
+Create the local PostgreSQL data directory from the project root:
+
+```sh
+mkdir -p .local/postgres
+```
+
+### 3. Start the infrastructure
+
+From the Terraform configuration directory:
+
+```sh
+cd infrastructure/local
+terraform init
+terraform plan
+terraform apply
+```
+
+Review the plan before confirming the apply. Terraform builds the API image and
+provisions the local Docker network, PostgreSQL, Redis, and the Go API container.
+Published ports bind to `127.0.0.1`; ensure ports 8080, 5432, and 6379 are available.
+
+Return to the project root and apply the database schema once PostgreSQL is ready:
+
+```sh
+cd ../..
+docker exec go-url-shortener-postgres pg_isready -U app -d urlshortener
+docker exec -i go-url-shortener-postgres \
+  psql -v ON_ERROR_STOP=1 -U app -d urlshortener \
+  < migrations/001_create_urls.up.sql
+```
+
+If `pg_isready` does not yet report that it is accepting connections, wait and
+retry before applying the migration. Terraform does not run migrations
+automatically; creating short URLs requires the `urls` table.
+
+### 4. Verify the API
+
+```sh
+curl -i http://127.0.0.1:8080/health
+```
+
+Expected HTTP status: `200 OK`.
+
+Create a short URL:
+
+```sh
+curl -i -X POST http://127.0.0.1:8080/shorten \
+  -H "Content-Type: application/json" \
+  -d '{"url":"https://example.com"}'
+```
+
+Expected HTTP status: `201 Created`.
+
+### 5. Run Go tests
+
+If Go is installed locally, run these checks from the project root:
+
+```sh
+go test ./...
+go test -race ./...
+go vet ./...
+```
+
+These checks also run through GitHub Actions on pushes to `main` and pull
+requests targeting `main`.
+
+### 6. Stop the local environment
+
+From the project root:
+
+```sh
+cd infrastructure/local
+terraform plan -destroy
+terraform destroy
+```
+
+**Warning:** Terraform destroy can remove containers, networks, and
+Terraform-managed storage resources. Back up any database data you want to keep
+before destroying the infrastructure. The current PostgreSQL bind mount uses
+`.local/postgres/` in the project root; Terraform destroy leaves that directory
+and its database files on disk.
+
 ## Development commands
 
 Copy `.env.example` to `.env` for local configuration and update the database
@@ -31,9 +142,8 @@ history; running `make migrate-up` again skips creation if the table already exi
 PostgreSQL stores its data in `.local/postgres/`, which is
 ignored by Git and mounted at `/var/lib/postgresql/data` in the container.
 When running Terraform directly, create this directory before applying.
-Switching from the previous Docker volume starts a fresh database; existing data
-is not copied automatically. The previous `go-url-shortener-postgres-data` volume
-remains managed by Terraform to preserve that data during the switch.
+The database files persist across container recreation and `terraform destroy`;
+removing `.local/postgres/` deletes that local database.
 
 ## Performance Benchmark
 
