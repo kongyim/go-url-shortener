@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go-url-shortener/internal/cache"
 	"log"
 	"os"
 	"time"
@@ -40,31 +41,33 @@ func main() {
 		log.Fatal("Redis connection failed: ", err)
 	}
 
-	// SET with 1 hour TTL
-	err := client.Set(
+	urlCache := cache.NewRedisURLCache(client)
+
+	err := urlCache.Set(
 		ctx,
-		"url:demo01",
+		"demo01",
 		"https://example.com",
 		time.Hour,
-	).Err()
-
+	)
 	if err != nil {
-		log.Fatal("Redis SET failed: ", err)
+		log.Fatal("Cache SET failed: ", err)
 	}
 
-	// GET cached URL
-	value, err := client.Get(
-		ctx,
-		"url:demo01",
-	).Result()
-
-	if errors.Is(err, redis.Nil) {
-		log.Println("Cache miss")
-		return
-	}
+	originalURL, err := urlCache.Get(ctx, "demo01")
 	if err != nil {
-		log.Fatal("Redis GET failed: ", err)
+		log.Fatal("Cache GET failed: ", err)
 	}
 
-	fmt.Println("Cached URL:", value)
+	fmt.Println("Cached URL:", originalURL)
+
+	_, err = urlCache.Get(ctx, "missing-code-123")
+
+	if errors.Is(err, cache.ErrCacheMiss) {
+		fmt.Println("Cache miss detected correctly")
+	} else if err != nil {
+		log.Fatal("Unexpected cache error: ", err)
+	} else {
+		log.Fatal("Expected cache miss, but key exists")
+	}
+
 }
