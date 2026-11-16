@@ -47,6 +47,7 @@ func TestRedirectHandlerCache(t *testing.T) {
 		cached     string
 		getErr     error
 		setErr     error
+		repoErr    error
 		missing    bool
 		wantStatus int
 		wantReads  int
@@ -57,10 +58,18 @@ func TestRedirectHandlerCache(t *testing.T) {
 		{name: "read failure falls back", getErr: errors.New("redis unavailable"), wantStatus: 302, wantReads: 1, wantWrites: 1},
 		{name: "write failure still redirects", getErr: cache.ErrCacheMiss, setErr: errors.New("redis unavailable"), wantStatus: 302, wantReads: 1, wantWrites: 1},
 		{name: "missing URL is not cached", getErr: cache.ErrCacheMiss, missing: true, wantStatus: 404, wantReads: 1},
+		{
+			name:       "database error after cache miss is not cached",
+			getErr:     cache.ErrCacheMiss,
+			repoErr:    errors.New("database unavailable"),
+			wantStatus: http.StatusInternalServerError,
+			wantReads:  1,
+			wantWrites: 0,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
-			repo := &MockURLRepository{}
-			if !tt.missing {
+			repo := &MockURLRepository{GetErr: tt.repoErr}
+			if !tt.missing && tt.repoErr == nil {
 				repo.FoundURL = &database.URL{ShortCode: "abc123", OriginalURL: "https://stored.example/path"}
 			}
 			urlCache := &mockURLCache{value: tt.cached, getErr: tt.getErr, setErr: tt.setErr}
