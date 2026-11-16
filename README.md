@@ -111,6 +111,81 @@ before destroying the infrastructure. The current PostgreSQL bind mount uses
 `.local/postgres/` in the project root; Terraform destroy leaves that directory
 and its database files on disk.
 
+## Architecture
+
+The application is built with Go and Gin, using PostgreSQL for persistent URL
+storage and Redis as a cache-aside layer for redirects.
+
+```mermaid
+flowchart TD
+    Client["HTTP Client"]
+    API["Go API (Gin)"]
+    Redis[("Redis Cache")]
+    DB[("PostgreSQL")]
+    Metrics["In-Memory Metrics (inside API)"]
+
+    Client -->|"POST /shorten"| API
+    Client -->|"GET /:shortCode"| API
+    Client -->|"GET /metrics"| API
+
+    API -->|"Redis GET / SET"| Redis
+    API -->|"Insert URL / lookup on cache miss or error"| DB
+    API -->|"Record hits, misses, errors and latency"| Metrics
+
+    subgraph LocalInfrastructure["Local Docker Infrastructure (Terraform)"]
+        API
+        Redis
+        DB
+        Metrics
+    end
+```
+
+### Redirect Flow (Cache-Aside)
+
+1. A client requests `GET /:shortCode`.
+2. The API checks Redis for the original URL.
+3. On a **cache hit**, the API returns an HTTP 302 redirect.
+4. On a **cache miss or Redis GET error**, the API queries PostgreSQL. If the URL
+   exists, it attempts to populate Redis with a one-hour TTL and returns HTTP 302,
+   even if the cache write fails. A missing URL returns HTTP 404; a database error
+   returns HTTP 500.
+5. Cache hits, misses, Redis GET errors, and Redis/PostgreSQL lookup latencies are
+   recorded in thread-safe, in-memory metrics. Cache write failures are logged.
+
+## Technical Highlights
+
+| Area | Implementation |
+| --- | --- |
+| Backend | Go, Gin, RESTful API |
+| Persistent Storage | PostgreSQL with repository abstraction |
+| Caching | Redis cache-aside, 1-hour TTL |
+| Reliability | Graceful shutdown with SIGINT/SIGTERM and a 10-second timeout |
+| Concurrency | Atomic metrics and Go race-detector checks in CI |
+| Observability | `GET /metrics` with cache hit rate and average lookup latency |
+| Performance | Reproducible cache-hit/cache-miss benchmarks reporting average, p50 and p95 HTTP latency |
+| Infrastructure | Multi-stage Docker build and Terraform-managed local containers/network |
+| CI | GitHub Actions: Go tests, race detector, `go vet`, and Docker image build |
+
+### Engineering Decisions
+
+**Redis cache-aside:** PostgreSQL remains the source of truth. Cache misses fall
+back to PostgreSQL and repopulate Redis, so Redis is not required to hold the
+complete URL dataset. Redis errors also fall back to PostgreSQL.
+
+**Graceful shutdown:** The HTTP server handles termination signals and allows
+in-flight requests to finish within a bounded shutdown timeout before falling
+back to connection closure.
+
+**Concurrency-safe metrics:** Atomic counters support concurrent HTTP requests
+without data races. Metrics are process-local and reset when the API restarts.
+
+**Reproducible benchmarking:** Scripts compare end-to-end HTTP latency for
+cache-hit and cache-miss paths. Results are workload-specific and should not be
+interpreted as isolated Redis-versus-PostgreSQL performance.
+
+**Local-first infrastructure:** Docker and Terraform provide a reproducible local
+development environment without requiring a paid cloud account.
+
 ## Development commands
 
 Copy `.env.example` to `.env` for local configuration and update the database
