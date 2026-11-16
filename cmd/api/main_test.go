@@ -418,6 +418,8 @@ func TestMetricsHandler(t *testing.T) {
 	cacheMetrics.RecordError()
 	cacheMetrics.RecordRedisGETDuration(1500 * time.Microsecond)
 	cacheMetrics.RecordRedisGETDuration(3 * time.Millisecond)
+	cacheMetrics.RecordPostgresLookupDuration(2 * time.Millisecond)
+	cacheMetrics.RecordPostgresLookupDuration(5 * time.Millisecond)
 
 	req := httptest.NewRequest(
 		http.MethodGet,
@@ -436,12 +438,14 @@ func TestMetricsHandler(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 
 	var response struct {
-		Hits                     uint64  `json:"hits"`
-		Misses                   uint64  `json:"misses"`
-		Errors                   uint64  `json:"errors"`
-		HitRatePercent           float64 `json:"hitRatePercent"`
-		RedisGetCount            uint64  `json:"redisGetCount"`
-		AverageRedisGetLatencyMs float64 `json:"averageRedisGetLatencyMs"`
+		Hits                           uint64  `json:"hits"`
+		Misses                         uint64  `json:"misses"`
+		Errors                         uint64  `json:"errors"`
+		HitRatePercent                 float64 `json:"hitRatePercent"`
+		RedisGetCount                  uint64  `json:"redisGetCount"`
+		AverageRedisGetLatencyMs       float64 `json:"averageRedisGetLatencyMs"`
+		PostgresLookupCount            uint64  `json:"postgresLookupCount"`
+		AveragePostgresLookupLatencyMs float64 `json:"averagePostgresLookupLatencyMs"`
 	}
 
 	require.NoError(
@@ -455,6 +459,8 @@ func TestMetricsHandler(t *testing.T) {
 	assert.InDelta(t, 50.0, response.HitRatePercent, 0.000001)
 	assert.Equal(t, uint64(2), response.RedisGetCount)
 	assert.InDelta(t, 2.25, response.AverageRedisGetLatencyMs, 0.000001)
+	assert.Equal(t, uint64(2), response.PostgresLookupCount)
+	assert.InDelta(t, 3.5, response.AveragePostgresLookupLatencyMs, 0.000001)
 }
 
 func TestMetricsHandlerInitiallyZero(t *testing.T) {
@@ -482,7 +488,9 @@ func TestMetricsHandlerInitiallyZero(t *testing.T) {
         "errors": 0,
         "hitRatePercent": 0,
         "redisGetCount": 0,
-        "averageRedisGetLatencyMs": 0
+        "averageRedisGetLatencyMs": 0,
+ "postgresLookupCount": 0,
+ "averagePostgresLookupLatencyMs": 0
     }`, recorder.Body.String())
 }
 

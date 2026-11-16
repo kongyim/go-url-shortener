@@ -12,6 +12,9 @@ type CacheMetrics struct {
 
 	redisGETCount      atomic.Uint64
 	redisGETTotalNanos atomic.Uint64
+
+	postgresLookupCount      atomic.Uint64
+	postgresLookupTotalNanos atomic.Uint64
 }
 
 func (m *CacheMetrics) RecordHit() {
@@ -33,6 +36,9 @@ type CacheStats struct {
 
 	RedisGETCount      uint64
 	RedisGETTotalNanos uint64
+
+	PostgresLookupCount      uint64
+	PostgresLookupTotalNanos uint64
 }
 
 func (m *CacheMetrics) Snapshot() CacheStats {
@@ -41,8 +47,10 @@ func (m *CacheMetrics) Snapshot() CacheStats {
 		Misses: m.misses.Load(),
 		Errors: m.errors.Load(),
 
-		RedisGETCount:      m.redisGETCount.Load(),
-		RedisGETTotalNanos: m.redisGETTotalNanos.Load(),
+		RedisGETCount:            m.redisGETCount.Load(),
+		RedisGETTotalNanos:       m.redisGETTotalNanos.Load(),
+		PostgresLookupCount:      m.postgresLookupCount.Load(),
+		PostgresLookupTotalNanos: m.postgresLookupTotalNanos.Load(),
 	}
 }
 
@@ -73,4 +81,19 @@ func (m *CacheMetrics) RecordRedisGETDuration(d time.Duration) {
 
 	m.redisGETCount.Add(1)
 	m.redisGETTotalNanos.Add(uint64(d.Nanoseconds()))
+}
+
+func (s CacheStats) AveragePostgresLookupLatencyMS() float64 {
+	if s.PostgresLookupCount == 0 {
+		return 0
+	}
+	return float64(s.PostgresLookupTotalNanos) / 1_000_000 / float64(s.PostgresLookupCount)
+}
+
+func (m *CacheMetrics) RecordPostgresLookupDuration(d time.Duration) {
+	if d < 0 {
+		return
+	}
+	m.postgresLookupCount.Add(1)
+	m.postgresLookupTotalNanos.Add(uint64(d.Nanoseconds()))
 }

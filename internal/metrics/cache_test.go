@@ -102,3 +102,31 @@ func TestAverageRedisGETLatencyInitiallyZero(t *testing.T) {
 
 	assert.Zero(t, stats.AverageRedisGETLatencyMS())
 }
+
+func TestPostgresLookupLatency(t *testing.T) {
+	for _, tt := range []struct {
+		name        string
+		durations   []time.Duration
+		wantCount   uint64
+		wantNanos   uint64
+		wantAverage float64
+	}{
+		{name: "initially zero"},
+		{name: "fractional average", durations: []time.Duration{1500 * time.Microsecond, 3 * time.Millisecond}, wantCount: 2, wantNanos: 4_500_000, wantAverage: 2.25},
+		{name: "zero duration counts", durations: []time.Duration{0}, wantCount: 1},
+		{name: "negative duration ignored", durations: []time.Duration{-time.Millisecond, 2 * time.Millisecond}, wantCount: 1, wantNanos: 2_000_000, wantAverage: 2},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			var m CacheMetrics
+			for _, d := range tt.durations {
+				m.RecordPostgresLookupDuration(d)
+			}
+			stats := m.Snapshot()
+			assert.Equal(t, tt.wantCount, stats.PostgresLookupCount)
+			assert.Equal(t, tt.wantNanos, stats.PostgresLookupTotalNanos)
+			assert.InDelta(t, tt.wantAverage, stats.AveragePostgresLookupLatencyMS(), 0.000001)
+			assert.Zero(t, stats.RedisGETCount)
+			assert.Zero(t, stats.RedisGETTotalNanos)
+		})
+	}
+}

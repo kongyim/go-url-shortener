@@ -94,6 +94,10 @@ func TestRedirectHandlerCache(t *testing.T) {
 			assert.Equal(t, tt.wantReads, repo.GetCalls)
 			assert.Equal(t, tt.wantWrites, urlCache.setCalls)
 			assert.Equal(t, uint64(1), stats.RedisGETCount)
+			assert.Equal(t, uint64(tt.wantReads), stats.PostgresLookupCount)
+			if tt.wantReads == 0 {
+				assert.Zero(t, stats.PostgresLookupTotalNanos)
+			}
 			if tt.wantStatus == 302 {
 				destination := tt.cached
 				if destination == "" {

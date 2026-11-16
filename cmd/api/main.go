@@ -174,7 +174,11 @@ func redirectHandler(c *gin.Context, repo URLReader, urlCache cache.URLCache, ca
 		}
 	}
 
+	start := time.Now()
 	foundURL, err := repo.GetByShortCode(c.Request.Context(), shortCode)
+	if cacheMetrics != nil {
+		cacheMetrics.RecordPostgresLookupDuration(time.Since(start))
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		c.String(http.StatusNotFound, "URL not found\n")
 		return
@@ -208,12 +212,14 @@ func metricsHandler(
 	stats := cacheMetrics.Snapshot()
 
 	c.JSON(http.StatusOK, gin.H{
-		"hits":                     stats.Hits,
-		"misses":                   stats.Misses,
-		"errors":                   stats.Errors,
-		"hitRatePercent":           stats.HitRate(),
-		"redisGetCount":            stats.RedisGETCount,
-		"averageRedisGetLatencyMs": stats.AverageRedisGETLatencyMS(),
+		"hits":                           stats.Hits,
+		"misses":                         stats.Misses,
+		"errors":                         stats.Errors,
+		"hitRatePercent":                 stats.HitRate(),
+		"redisGetCount":                  stats.RedisGETCount,
+		"averageRedisGetLatencyMs":       stats.AverageRedisGETLatencyMS(),
+		"postgresLookupCount":            stats.PostgresLookupCount,
+		"averagePostgresLookupLatencyMs": stats.AveragePostgresLookupLatencyMS(),
 	})
 }
 
