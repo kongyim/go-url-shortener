@@ -22,20 +22,22 @@ type mockURLCache struct {
 	setErr   error
 	getCalls int
 	setCalls int
-	key      string
-	stored   string
-	ttl      time.Duration
+
+	getKey string
+	setKey string
+	stored string
+	ttl    time.Duration
 }
 
 func (m *mockURLCache) Get(ctx context.Context, key string) (string, error) {
 	m.getCalls++
-	m.key = key
+	m.getKey = key
 	return m.value, m.getErr
 }
 
 func (m *mockURLCache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
 	m.setCalls++
-	m.key, m.stored, m.ttl = key, value, ttl
+	m.setKey, m.stored, m.ttl = key, value, ttl
 	return m.setErr
 }
 
@@ -66,7 +68,7 @@ func TestRedirectHandlerCache(t *testing.T) {
 			setupRouter(repo, urlCache).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/abc123", nil))
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Equal(t, 1, urlCache.getCalls)
-			assert.Equal(t, "abc123", urlCache.key)
+			assert.Equal(t, "abc123", urlCache.getKey)
 			assert.Equal(t, tt.wantReads, repo.GetCalls)
 			assert.Equal(t, tt.wantWrites, urlCache.setCalls)
 			if tt.wantStatus == 302 {
@@ -79,6 +81,7 @@ func TestRedirectHandlerCache(t *testing.T) {
 				assert.Empty(t, recorder.Header().Get("Location"))
 			}
 			if tt.wantWrites > 0 {
+				assert.Equal(t, "abc123", urlCache.setKey)
 				assert.Equal(t, repo.FoundURL.OriginalURL, urlCache.stored)
 				assert.Equal(t, time.Hour, urlCache.ttl)
 			}
@@ -112,7 +115,7 @@ func TestShortenHandlerCache(t *testing.T) {
 			assert.Equal(t, tt.wantWrites, urlCache.setCalls)
 			if tt.wantWrites > 0 {
 				require.NotNil(t, repo.CreatedURL)
-				assert.Equal(t, repo.CreatedURL.ShortCode, urlCache.key)
+				assert.Equal(t, repo.CreatedURL.ShortCode, urlCache.setKey)
 				assert.Equal(t, repo.CreatedURL.OriginalURL, urlCache.stored)
 				assert.Equal(t, time.Hour, urlCache.ttl)
 			}
