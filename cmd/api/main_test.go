@@ -348,3 +348,31 @@ func TestShortenHandlerRetriesCollision(t *testing.T) {
 		})
 	}
 }
+
+func TestRedirectHandler(t *testing.T) {
+	req := httptest.NewRequest(
+		http.MethodGet,
+		"/abc123",
+		nil,
+	)
+
+	recorder := httptest.NewRecorder()
+
+	repo := &MockURLRepository{}
+
+	setupRouter(repo).ServeHTTP(recorder, req)
+
+	require.Equal(
+		t,
+		http.StatusFound,
+		recorder.Code,
+	)
+
+	assert.Equal(
+		t,
+		"https://example.com",
+		recorder.Header().Get("Location"),
+	)
+
+	assert.Zero(t, repo.CreateCalls)
+}

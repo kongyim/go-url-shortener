@@ -102,6 +102,18 @@ func shortenHandler(c *gin.Context, repo URLCreator) {
 	)
 }
 
+func redirectHandler(c *gin.Context) {
+	shortCode := c.Param("shortCode")
+
+	log.Printf("Redirect requested for: %s", shortCode)
+
+	// Temporary hardcoded destination
+	c.Redirect(
+		http.StatusFound,
+		"https://example.com",
+	)
+}
+
 func setupRouter(repo URLCreator) *gin.Engine {
 	router := gin.Default()
 	router.HandleMethodNotAllowed = true
@@ -119,6 +131,11 @@ func setupRouter(repo URLCreator) *gin.Engine {
 	router.POST("/shorten", func(c *gin.Context) {
 		shortenHandler(c, repo)
 	})
+	router.GET("/shorten", func(c *gin.Context) {
+		c.Header("Allow", http.MethodPost)
+		c.String(http.StatusMethodNotAllowed, "Method not allowed\n")
+	})
+	router.GET("/:shortCode", redirectHandler)
 	return router
 }
 
