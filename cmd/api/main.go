@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -38,10 +40,11 @@ func healthHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, HealthResponse{Status: "ok"})
 }
 
+const maxCreateAttempts = 3
+
 func shortenHandler(c *gin.Context, repo URLCreator) {
 	var request ShortenRequest
 
-	// Step 1: Validate incoming JSON
 	if err := c.ShouldBindJSON(&request); err != nil {
 		c.String(
 			http.StatusBadRequest,
@@ -50,38 +53,53 @@ func shortenHandler(c *gin.Context, repo URLCreator) {
 		return
 	}
 
-	// Step 2: Generate a random short code
-	shortCode, err := generateShortCode()
-	if err != nil {
-		c.String(
-			http.StatusInternalServerError,
-			"Failed to generate short code\n",
+	for attempt := 0; attempt < maxCreateAttempts; attempt++ {
+		shortCode, err := generateShortCode()
+		if err != nil {
+			log.Printf("Generate short code failed: %v", err)
+			c.String(
+				http.StatusInternalServerError,
+				"Failed to generate short code\n",
+			)
+			return
+		}
+
+		savedURL, err := repo.Create(
+			c.Request.Context(),
+			shortCode,
+			request.URL,
 		)
+
+		if errors.Is(err, repository.ErrShortCodeConflict) {
+			continue
+		}
+
+		if err != nil {
+			log.Printf("Create URL failed: %v", err)
+			c.String(
+				http.StatusInternalServerError,
+				"Failed to create URL\n",
+			)
+			return
+		}
+
+		c.JSON(http.StatusCreated, ShortenResponse{
+			ShortCode:   savedURL.ShortCode,
+			OriginalURL: savedURL.OriginalURL,
+		})
 		return
 	}
 
-	// Step 3: Save URL to PostgreSQL
-	savedURL, err := repo.Create(
-		c.Request.Context(),
-		shortCode,
-		request.URL,
+	err := fmt.Errorf(
+		"failed after %d short code attempts",
+		maxCreateAttempts,
 	)
+	log.Printf("%v", err)
 
-	if err != nil {
-		log.Printf("Failed to create URL: %v", err)
-
-		c.String(
-			http.StatusInternalServerError,
-			"Failed to create URL\n",
-		)
-		return
-	}
-
-	// Step 4: Return saved URL
-	c.JSON(http.StatusCreated, ShortenResponse{
-		ShortCode:   savedURL.ShortCode,
-		OriginalURL: savedURL.OriginalURL,
-	})
+	c.String(
+		http.StatusInternalServerError,
+		"Failed to create URL\n",
+	)
 }
 
 func setupRouter(repo URLCreator) *gin.Engine {

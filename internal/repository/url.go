@@ -7,7 +7,11 @@ import (
 	"fmt"
 
 	"go-url-shortener/internal/database"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+var ErrShortCodeConflict = errors.New("short code already exists")
 
 type URLRepository struct {
 	db *sql.DB
@@ -45,6 +49,18 @@ func (r *URLRepository) Create(
 	)
 
 	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) &&
+			pgErr.Code == "23505" &&
+			pgErr.ConstraintName == "urls_short_code_key" {
+
+			return nil, fmt.Errorf(
+				"create URL: %w",
+				ErrShortCodeConflict,
+			)
+		}
+
 		return nil, fmt.Errorf("create URL: %w", err)
 	}
 

@@ -5,13 +5,15 @@ import (
 	"errors"
 
 	"go-url-shortener/internal/database"
+	"go-url-shortener/internal/repository"
 )
 
 type MockURLRepository struct {
-	CreateErr     error
-	CreateCalls   int
-	CreateContext context.Context
-	CreatedURL    *database.URL
+	CreateErr           error
+	CreateCalls         int
+	CreateContext       context.Context
+	CreatedURL          *database.URL
+	CollisionsRemaining int
 }
 
 func (m *MockURLRepository) Create(
@@ -22,8 +24,16 @@ func (m *MockURLRepository) Create(
 	m.CreateCalls++
 	m.CreateContext = ctx
 
+	// Simulate database error
 	if m.CreateErr != nil {
 		return nil, m.CreateErr
+	}
+
+	// Simulate short code collision
+	if m.CollisionsRemaining > 0 {
+		m.CollisionsRemaining--
+
+		return nil, repository.ErrShortCodeConflict
 	}
 
 	if shortCode == "" || originalURL == "" {
@@ -35,5 +45,6 @@ func (m *MockURLRepository) Create(
 		ShortCode:   shortCode,
 		OriginalURL: originalURL,
 	}
+
 	return m.CreatedURL, nil
 }
