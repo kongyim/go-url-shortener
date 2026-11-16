@@ -120,3 +120,85 @@ func TestGracefulShutdownWaitsForActiveRequest(t *testing.T) {
 		t.Fatal("HTTP server did not stop")
 	}
 }
+
+func TestShutdownTimeoutFallsBackToClose(t *testing.T) {
+	requestStarted := make(chan struct{})
+	finishRequest := make(chan struct{})
+
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(requestStarted)
+
+		<-finishRequest
+
+		w.WriteHeader(http.StatusOK)
+	})
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+
+	server := &http.Server{
+		Handler: handler,
+	}
+
+	serverDone := make(chan error, 1)
+
+	go func() {
+		serverDone <- server.Serve(listener)
+	}()
+
+	client := &http.Client{
+		Timeout: 5 * time.Second,
+	}
+
+	requestDone := make(chan error, 1)
+
+	go func() {
+		resp, err := client.Get(
+			"http://" + listener.Addr().String(),
+		)
+		if err == nil {
+			resp.Body.Close()
+		}
+		requestDone <- err
+	}()
+
+	// Wait until the handler has started.
+	select {
+	case <-requestStarted:
+	case <-time.After(5 * time.Second):
+		t.Fatal("request did not start")
+	}
+
+	// Use an already-expired context for a deterministic timeout.
+	shutdownCtx, cancel := context.WithCancel(
+		context.Background(),
+	)
+	cancel()
+
+	// Shutdown should fail because the active request
+	// has not completed and the context is canceled.
+	err = server.Shutdown(shutdownCtx)
+
+	require.ErrorIs(t, err, context.Canceled)
+
+	// Simulate the fallback used in main.go.
+	require.NoError(t, server.Close())
+
+	// The client should fail because the connection was closed.
+	select {
+	case err := <-requestDone:
+		require.Error(t, err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("client request did not finish")
+	}
+
+	// Release the blocked handler to avoid leaking a goroutine.
+	close(finishRequest)
+
+	select {
+	case err := <-serverDone:
+		assert.ErrorIs(t, err, http.ErrServerClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("HTTP server did not stop")
+	}
+}
