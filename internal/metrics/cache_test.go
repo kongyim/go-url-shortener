@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -68,4 +69,36 @@ func TestCacheStatsHitRate(t *testing.T) {
 			assert.InDelta(t, tt.want, got, 0.000001)
 		})
 	}
+}
+
+func TestAverageRedisGETLatency(t *testing.T) {
+	var m CacheMetrics
+
+	m.RecordRedisGETDuration(1 * time.Millisecond)
+	m.RecordRedisGETDuration(2 * time.Millisecond)
+	m.RecordRedisGETDuration(3 * time.Millisecond)
+
+	stats := m.Snapshot()
+
+	assert.Equal(t, uint64(3), stats.RedisGETCount)
+
+	assert.InDelta(
+		t,
+		6_000_000,
+		float64(stats.RedisGETTotalNanos),
+		0.001,
+	)
+
+	assert.InDelta(
+		t,
+		2.0,
+		stats.AverageRedisGETLatencyMS(),
+		0.000001,
+	)
+}
+
+func TestAverageRedisGETLatencyInitiallyZero(t *testing.T) {
+	stats := CacheStats{}
+
+	assert.Zero(t, stats.AverageRedisGETLatencyMS())
 }

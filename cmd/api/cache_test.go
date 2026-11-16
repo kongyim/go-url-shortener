@@ -93,6 +93,7 @@ func TestRedirectHandlerCache(t *testing.T) {
 			assert.Equal(t, "abc123", urlCache.getKey)
 			assert.Equal(t, tt.wantReads, repo.GetCalls)
 			assert.Equal(t, tt.wantWrites, urlCache.setCalls)
+			assert.Equal(t, uint64(1), stats.RedisGETCount)
 			if tt.wantStatus == 302 {
 				destination := tt.cached
 				if destination == "" {

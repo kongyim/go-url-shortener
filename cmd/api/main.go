@@ -138,8 +138,14 @@ func redirectHandler(c *gin.Context, repo URLReader, urlCache cache.URLCache, ca
 	shortCode := c.Param("shortCode")
 	if urlCache != nil {
 		ctx, cancel := context.WithTimeout(c.Request.Context(), cacheTimeout)
+		start := time.Now()
 		originalURL, err := urlCache.Get(ctx, shortCode)
+		duration := time.Since(start)
 		cancel()
+
+		if cacheMetrics != nil {
+			cacheMetrics.RecordRedisGETDuration(duration)
+		}
 		switch {
 		case err == nil && originalURL != "":
 			if cacheMetrics != nil {

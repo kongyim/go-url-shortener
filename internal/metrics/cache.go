@@ -1,11 +1,17 @@
 package metrics
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+	"time"
+)
 
 type CacheMetrics struct {
 	hits   atomic.Uint64
 	misses atomic.Uint64
 	errors atomic.Uint64
+
+	redisGETCount      atomic.Uint64
+	redisGETTotalNanos atomic.Uint64
 }
 
 func (m *CacheMetrics) RecordHit() {
@@ -24,6 +30,9 @@ type CacheStats struct {
 	Hits   uint64
 	Misses uint64
 	Errors uint64
+
+	RedisGETCount      uint64
+	RedisGETTotalNanos uint64
 }
 
 func (m *CacheMetrics) Snapshot() CacheStats {
@@ -31,6 +40,9 @@ func (m *CacheMetrics) Snapshot() CacheStats {
 		Hits:   m.hits.Load(),
 		Misses: m.misses.Load(),
 		Errors: m.errors.Load(),
+
+		RedisGETCount:      m.redisGETCount.Load(),
+		RedisGETTotalNanos: m.redisGETTotalNanos.Load(),
 	}
 }
 
@@ -42,4 +54,23 @@ func (s CacheStats) HitRate() float64 {
 	}
 
 	return float64(s.Hits) / float64(total) * 100
+}
+
+func (s CacheStats) AverageRedisGETLatencyMS() float64 {
+	if s.RedisGETCount == 0 {
+		return 0
+	}
+
+	totalMilliseconds := float64(s.RedisGETTotalNanos) / 1_000_000
+
+	return totalMilliseconds / float64(s.RedisGETCount)
+}
+
+func (m *CacheMetrics) RecordRedisGETDuration(d time.Duration) {
+	if d < 0 {
+		return
+	}
+
+	m.redisGETCount.Add(1)
+	m.redisGETTotalNanos.Add(uint64(d.Nanoseconds()))
 }
