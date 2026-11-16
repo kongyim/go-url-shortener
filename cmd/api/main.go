@@ -8,6 +8,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"go-url-shortener/internal/cache"
@@ -301,7 +303,52 @@ func main() {
 
 	log.Printf("Starting server on port http://localhost%s...\n", server.Addr)
 
-	if err := server.ListenAndServe(); err != nil {
-		log.Fatal("HTTP server failed: ", err)
+	shutdownCtx, stop := signal.NotifyContext(
+		context.Background(),
+		os.Interrupt,
+		syscall.SIGTERM,
+	)
+	defer stop()
+
+	serverErr := make(chan error, 1)
+
+	go func() {
+		serverErr <- server.ListenAndServe()
+	}()
+
+	log.Println("Starting server on port 8080...")
+
+	select {
+	case <-shutdownCtx.Done():
+		log.Println("Shutdown signal received")
+
+	case err := <-serverErr:
+		if !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("HTTP server failed: %v", err)
+		}
+		return
 	}
+
+	// Stop handling the signal so a second Ctrl+C can terminate
+	// the process using its default behavior.
+	stop()
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		10*time.Second,
+	)
+	defer cancel()
+
+	log.Println("Shutting down HTTP server...")
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Printf("HTTP server shutdown failed: %v", err)
+		if closeErr := server.Close(); closeErr != nil {
+			log.Printf("HTTP server close failed: %v", closeErr)
+		}
+		return
+	}
+
+	log.Println("HTTP server stopped gracefully")
+
 }
