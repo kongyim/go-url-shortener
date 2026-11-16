@@ -305,6 +305,12 @@ func TestShortenHandlerRetriesCollision(t *testing.T) {
 			wantCalls:  maxCreateAttempts,
 			wantStatus: http.StatusInternalServerError,
 		},
+		{
+			name:       "succeeds without collision",
+			collisions: 0,
+			wantCalls:  1,
+			wantStatus: http.StatusCreated,
+		},
 	}
 
 	for _, tt := range tests {
