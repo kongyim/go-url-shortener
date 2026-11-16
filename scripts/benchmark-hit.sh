@@ -36,7 +36,7 @@ for ((i = 1; i <= REQUESTS; i++)); do
     exit 1
   fi
 
-  if [[ ! "$latency" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  if [[ ! "$latency" =~ ^[0-9]+([.][0-9]+)?$ || ! "$latency" =~ [1-9] ]]; then
     echo "Request $i returned an invalid latency: $latency" >&2
     exit 1
   fi

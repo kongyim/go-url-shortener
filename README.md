@@ -131,6 +131,15 @@ Results are staged in a temporary directory; the project-root `cache-hit.txt` an
 `cache-miss.txt` files are replaced only after both benchmarks and report validation
 succeed. An earlier failure stops the workflow and preserves previous results.
 
+The wrapper validates `/metrics` before and after each phase. Cache Hit must add
+101 hits and no misses or PostgreSQL lookups (including warm-up). Cache Miss must
+add one hit for preflight, 100 misses, and 100 PostgreSQL lookups. Both phases must
+add 101 Redis GETs and zero cache errors. Missing or invalid metrics, or unexpected
+counter changes, stop the workflow before publishing results. Run against one API
+process with no other traffic or restarts: these are global counters, not per-URL
+traces. The standalone collection scripts do not automatically verify counters.
+Both collectors reject zero, negative, and malformed latency samples.
+
 Each run creates one PostgreSQL URL record, which is retained even if a later step
 fails. Successful creation also populates Redis. Redirect destinations are not
 visited. The individual scripts below remain available for manual runs.
