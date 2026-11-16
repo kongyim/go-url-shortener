@@ -222,11 +222,11 @@ func setupRouter(repo URLRepository, urlCache cache.URLCache, cacheMetrics *metr
 	router.HandleMethodNotAllowed = true
 	router.NoMethod(func(c *gin.Context) {
 		switch c.Request.URL.Path {
+		case "/metrics":
+			c.Header("Allow", http.MethodGet)
 		case "/health":
 			c.Header("Allow", http.MethodGet)
 		case "/shorten":
-			c.Header("Allow", http.MethodPost)
-		case "/metrics":
 			c.Header("Allow", http.MethodPost)
 		}
 

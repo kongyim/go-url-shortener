@@ -485,3 +485,17 @@ func TestMetricsHandlerInitiallyZero(t *testing.T) {
         "averageRedisGetLatencyMs": 0
     }`, recorder.Body.String())
 }
+
+func TestMetricsMethodNotAllowed(t *testing.T) {
+	req := httptest.NewRequest(http.MethodPost, "/metrics", nil)
+	recorder := httptest.NewRecorder()
+
+	setupRouter(
+		&MockURLRepository{},
+		nil,
+		&metrics.CacheMetrics{},
+	).ServeHTTP(recorder, req)
+
+	assert.Equal(t, http.StatusMethodNotAllowed, recorder.Code)
+	assert.Equal(t, http.MethodGet, recorder.Header().Get("Allow"))
+}
