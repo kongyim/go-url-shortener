@@ -279,3 +279,37 @@ func TestShortenHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestShortenHandlerDatabaseError(t *testing.T) {
+	repo := &MockURLRepository{
+		CreateErr: errors.New("database unavailable"),
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/shorten",
+		bytes.NewBufferString(
+			`{"url":"https://example.com"}`,
+		),
+	)
+
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+
+	setupRouter(repo).ServeHTTP(recorder, req)
+
+	assert.Equal(
+		t,
+		http.StatusInternalServerError,
+		recorder.Code,
+	)
+
+	assert.Equal(t, 1, repo.CreateCalls)
+
+	assert.NotContains(
+		t,
+		recorder.Body.String(),
+		"database unavailable",
+	)
+}
