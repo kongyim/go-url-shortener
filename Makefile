@@ -4,7 +4,7 @@ terraform-init:
 	terraform -chdir=infrastructure/local init
 
 terraform-apply:
-	mkdir -p infrastructure/local/data/postgres
+	mkdir -p .local/postgres
 	terraform -chdir=infrastructure/local apply
 
 terraform-plan:

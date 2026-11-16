@@ -28,7 +28,7 @@ Migration commands require the `go-url-shortener-postgres` Docker container to b
 running. They execute the specified SQL files directly and do not track migration
 history; running `make migrate-up` again skips creation if the table already exists.
 
-PostgreSQL stores its data in `infrastructure/local/data/postgres/`, which is
+PostgreSQL stores its data in `.local/postgres/`, which is
 ignored by Git and mounted at `/var/lib/postgresql/data` in the container.
 When running Terraform directly, create this directory before applying.
 Switching from the previous Docker volume starts a fresh database; existing data

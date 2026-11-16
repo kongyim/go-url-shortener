@@ -8,6 +8,7 @@
 crash.log
 
 # Local PostgreSQL data
+/.local/
 /infrastructure/local/data/
 
 # Secrets

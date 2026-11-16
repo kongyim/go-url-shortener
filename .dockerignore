@@ -3,6 +3,7 @@
 
 # Local infrastructure, Terraform state, and PostgreSQL data are not build inputs.
 infrastructure/
+.local/
 
 .env
 .env.*
