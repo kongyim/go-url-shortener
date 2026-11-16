@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log"
@@ -114,15 +115,23 @@ func shortenHandler(c *gin.Context, repo URLRepository) {
 	)
 }
 
-func redirectHandler(c *gin.Context) {
+func redirectHandler(c *gin.Context, repo URLReader) {
 	shortCode := c.Param("shortCode")
 
-	log.Printf("Redirect requested for: %s", shortCode)
+	foundURL, err := repo.GetByShortCode(c.Request.Context(), shortCode)
+	if errors.Is(err, sql.ErrNoRows) {
+		c.String(http.StatusNotFound, "URL not found\n")
+		return
+	}
+	if err != nil {
+		log.Printf("Get URL by short code failed: %v", err)
+		c.String(http.StatusInternalServerError, "Failed to retrieve URL\n")
+		return
+	}
 
-	// Temporary hardcoded destination
 	c.Redirect(
 		http.StatusFound,
-		"https://example.com",
+		foundURL.OriginalURL,
 	)
 }
 
@@ -147,7 +156,9 @@ func setupRouter(repo URLRepository) *gin.Engine {
 		c.Header("Allow", http.MethodPost)
 		c.String(http.StatusMethodNotAllowed, "Method not allowed\n")
 	})
-	router.GET("/:shortCode", redirectHandler)
+	router.GET("/:shortCode", func(c *gin.Context) {
+		redirectHandler(c, repo)
+	})
 	return router
 }
 

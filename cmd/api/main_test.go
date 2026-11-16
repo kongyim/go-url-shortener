@@ -2,11 +2,15 @@ package main
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"go-url-shortener/internal/database"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -350,29 +354,55 @@ func TestShortenHandlerRetriesCollision(t *testing.T) {
 }
 
 func TestRedirectHandler(t *testing.T) {
-	req := httptest.NewRequest(
-		http.MethodGet,
-		"/abc123",
-		nil,
-	)
+	tests := []struct {
+		name         string
+		result       *database.URL
+		err          error
+		wantStatus   int
+		wantLocation string
+		wantBody     string
+	}{
+		{
+			name:         "redirects to stored URL",
+			result:       &database.URL{ShortCode: "abc123", OriginalURL: "https://golang.org/doc/?source=short#intro"},
+			wantStatus:   http.StatusFound,
+			wantLocation: "https://golang.org/doc/?source=short#intro",
+		},
+		{
+			name:       "unknown short code",
+			wantStatus: http.StatusNotFound,
+			wantBody:   "URL not found\n",
+		},
+		{
+			name:       "wrapped not found error",
+			err:        fmt.Errorf("get URL by short code: %w", sql.ErrNoRows),
+			wantStatus: http.StatusNotFound,
+			wantBody:   "URL not found\n",
+		},
+		{
+			name:       "repository error",
+			err:        errors.New("database unavailable"),
+			wantStatus: http.StatusInternalServerError,
+			wantBody:   "Failed to retrieve URL\n",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/abc123", nil)
+			recorder := httptest.NewRecorder()
+			repo := &MockURLRepository{GetByShortCodeResult: tt.result, GetByShortCodeErr: tt.err}
 
-	recorder := httptest.NewRecorder()
+			setupRouter(repo).ServeHTTP(recorder, req)
 
-	repo := &MockURLRepository{}
-
-	setupRouter(repo).ServeHTTP(recorder, req)
-
-	require.Equal(
-		t,
-		http.StatusFound,
-		recorder.Code,
-	)
-
-	assert.Equal(
-		t,
-		"https://example.com",
-		recorder.Header().Get("Location"),
-	)
-
-	assert.Zero(t, repo.CreateCalls)
+			require.Equal(t, tt.wantStatus, recorder.Code)
+			assert.Equal(t, tt.wantLocation, recorder.Header().Get("Location"))
+			if tt.wantBody != "" {
+				assert.Equal(t, tt.wantBody, recorder.Body.String())
+			}
+			assert.Equal(t, 1, repo.GetByShortCodeCalls)
+			assert.Equal(t, "abc123", repo.GetByShortCodeShortCode)
+			assert.Equal(t, req.Context(), repo.GetByShortCodeContext)
+			assert.Zero(t, repo.CreateCalls)
+		})
+	}
 }
