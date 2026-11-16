@@ -279,3 +279,37 @@ func TestShortenHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestShortenHandlerRetriesCollision(t *testing.T) {
+	repo := &MockURLRepository{
+		CollisionsRemaining: 1,
+	}
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/shorten",
+		bytes.NewBufferString(
+			`{"url":"https://example.com"}`,
+		),
+	)
+
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+
+	setupRouter(repo).ServeHTTP(recorder, req)
+
+	require.Equal(t, http.StatusCreated, recorder.Code)
+
+	assert.Equal(t, 2, repo.CreateCalls)
+
+	require.NotNil(t, repo.CreatedURL)
+
+	assert.Equal(
+		t,
+		"https://example.com",
+		repo.CreatedURL.OriginalURL,
+	)
+
+	assert.Len(t, repo.CreatedURL.ShortCode, 8)
+}
