@@ -127,7 +127,9 @@ Run the benchmark from the project root using the returned short code:
 
 The script warms up the cache, performs 100 sequential HTTP GET requests, verifies
 HTTP 302 responses, and saves the observed request durations (in seconds) to
-`cache-hit.txt`. Each run overwrites the output file. Redirects are not followed.
+`cache-hit.txt`. The output file is replaced only after all 100 requests succeed. A failed run
+removes its temporary samples and preserves any previous output. Redirects are
+not followed.
 
 Check `GET /metrics` before and after running the script to confirm the requests
 were served from Redis without additional PostgreSQL lookups. With an already
@@ -156,8 +158,9 @@ then performs 100 sequential HTTP GET requests. Before each measured request,
 it removes the corresponding Redis key and verifies that the key is absent.
 
 Only successful HTTP 302 responses are recorded; the script stops on a failed
-request. Request durations are saved in seconds to `cache-miss.txt`, overwriting
-the previous output. Redirects are not followed. Redis key deletion and absence
+request. Request durations are saved in seconds to `cache-miss.txt`. The output
+file is replaced only after all 100 requests succeed; a failed run removes its
+temporary samples and preserves any previous output. Redirects are not followed. Redis key deletion and absence
 checks are outside the measured HTTP request duration.
 
 Verify the cache miss and PostgreSQL lookup counter increments using
@@ -180,7 +183,13 @@ project root:
 ./scripts/benchmark-report.sh
 ```
 
-The script reads `cache-hit.txt` and `cache-miss.txt` and calculates:
+The script requires exactly 100 nonnegative numeric samples in each of
+`cache-hit.txt` and `cache-miss.txt`, with one value per line and a positive cache
+hit average. Invalid or incomplete inputs fail without printing a report. Since
+failed benchmark runs preserve previous results, confirm both runs completed
+successfully before generating a new comparison.
+
+The script calculates:
 
 - Average HTTP response latency
 - Median latency (p50)
@@ -196,15 +205,6 @@ PostgreSQL benchmark.
 
 ## Formatting
 
-Run `npm install` to install the project's Prettier version.
-
-In VS Code, install the workspace's recommended extensions (open the Command
-Palette and select **Extensions: Show Recommended Extensions**). Workspace settings
-enable formatting whenever you save a file.
-
-Prettier formats supported files such as JSON, Markdown, JavaScript, and YAML.
-Go and Terraform files use their respective extensions instead; install Go and
-Terraform locally to use those formatters.
-
-- `npm run format` formats all Prettier-supported files.
-- `npm run format:check` checks formatting without changing files.
+Format Go files with `gofmt` and Terraform files with
+`terraform -chdir=infrastructure/local fmt`. In VS Code, install the recommended
+extensions listed in `.vscode/extensions.json` for editor formatting support.

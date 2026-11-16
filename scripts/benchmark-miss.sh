@@ -1,7 +1,7 @@
-
 #!/usr/bin/env bash
 
 set -euo pipefail
+export LC_ALL=C
 
 SHORT_CODE="${1:?Usage: $0 <short-code>}"
 REQUESTS=100
@@ -20,7 +20,10 @@ if [[ "$status" != "302" ]]; then
   exit 1
 fi
 
-: > "$OUTPUT"
+TEMP_OUTPUT=$(mktemp "${OUTPUT}.tmp.XXXXXX")
+trap 'rm -f "$TEMP_OUTPUT"' EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 for ((i = 1; i <= REQUESTS; i++)); do
   # Remove the cached entry before every request.
@@ -48,7 +51,14 @@ for ((i = 1; i <= REQUESTS; i++)); do
     exit 1
   fi
 
-  echo "$latency" >> "$OUTPUT"
+  if [[ ! "$latency" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "Request $i returned an invalid latency: $latency" >&2
+    exit 1
+  fi
+
+  echo "$latency" >> "$TEMP_OUTPUT"
 done
+
+mv "$TEMP_OUTPUT" "$OUTPUT"
 
 echo "Collected $REQUESTS Cache Miss samples in $OUTPUT"

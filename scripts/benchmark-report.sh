@@ -1,7 +1,7 @@
-
 #!/usr/bin/env bash
 
 set -euo pipefail
+export LC_ALL=C
 
 HIT_FILE="cache-hit.txt"
 MISS_FILE="cache-miss.txt"
@@ -16,13 +16,14 @@ done
 
 # Calculate statistics for both datasets.
 awk '
-FNR == 1 {
-    dataset++
+{
+    dataset = (FILENAME == ARGV[1] ? 1 : 2)
 }
 
 {
-    if ($1 !~ /^[0-9]+([.][0-9]+)?$/) {
+    if (NF != 1 || $1 !~ /^[0-9]+([.][0-9]+)?$/) {
         print "Invalid latency value: " $0 > "/dev/stderr"
+        invalid = 1
         exit 1
     }
 
@@ -32,8 +33,11 @@ FNR == 1 {
 }
 
 END {
-    if (count[1] == 0 || count[2] == 0) {
-        print "Both files must contain latency samples" > "/dev/stderr"
+    if (invalid) {
+        exit 1
+    }
+    if (count[1] != 100 || count[2] != 100) {
+        print "Both files must contain exactly 100 latency samples" > "/dev/stderr"
         exit 1
     }
 
@@ -52,10 +56,7 @@ END {
         avg[d] = total[d] / count[d]
 
         if (count[d] % 2 == 0) {
-            p50[d] = (
-                values[d, count[d] / 2] +
-                values[d, count[d] / 2 + 1]
-            ) / 2
+            p50[d] = (values[d, count[d] / 2] + values[d, count[d] / 2 + 1]) / 2
         } else {
             p50[d] = values[d, (count[d] + 1) / 2]
         }
