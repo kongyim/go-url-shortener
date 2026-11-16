@@ -293,6 +293,15 @@ func main() {
 	cacheMetrics := &metrics.CacheMetrics{}
 
 	router := setupRouter(repo, urlCache, cacheMetrics)
-	log.Println("Starting server on port 8080...")
-	log.Fatal(router.Run(":8080"))
+	server := &http.Server{
+		Addr:              ":8080",
+		Handler:           router,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	log.Printf("Starting server on port http://localhost%s...\n", server.Addr)
+
+	if err := server.ListenAndServe(); err != nil {
+		log.Fatal("HTTP server failed: ", err)
+	}
 }
