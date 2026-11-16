@@ -26,3 +26,6 @@ jobs:
 
       - name: Run Go tests
         run: go test ./...
+
+      - name: Run Go tests with race detector
+        run: go test -race ./...
