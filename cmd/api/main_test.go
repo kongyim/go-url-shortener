@@ -281,35 +281,63 @@ func TestShortenHandler(t *testing.T) {
 }
 
 func TestShortenHandlerRetriesCollision(t *testing.T) {
-	repo := &MockURLRepository{
-		CollisionsRemaining: 1,
+	tests := []struct {
+		name       string
+		collisions int
+		wantCalls  int
+		wantStatus int
+	}{
+		{
+			name:       "succeeds after one collision",
+			collisions: 1,
+			wantCalls:  2,
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "succeeds on the final attempt",
+			collisions: maxCreateAttempts - 1,
+			wantCalls:  maxCreateAttempts,
+			wantStatus: http.StatusCreated,
+		},
+		{
+			name:       "stops after exhausting attempts",
+			collisions: maxCreateAttempts,
+			wantCalls:  maxCreateAttempts,
+			wantStatus: http.StatusInternalServerError,
+		},
 	}
 
-	req := httptest.NewRequest(
-		http.MethodPost,
-		"/shorten",
-		bytes.NewBufferString(
-			`{"url":"https://example.com"}`,
-		),
-	)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := &MockURLRepository{CollisionsRemaining: tt.collisions}
+			req := httptest.NewRequest(
+				http.MethodPost,
+				"/shorten",
+				bytes.NewBufferString(`{"url":"https://example.com"}`),
+			)
+			req.Header.Set("Content-Type", "application/json")
+			recorder := httptest.NewRecorder()
 
-	req.Header.Set("Content-Type", "application/json")
+			setupRouter(repo).ServeHTTP(recorder, req)
 
-	recorder := httptest.NewRecorder()
+			require.Equal(t, tt.wantStatus, recorder.Code)
+			assert.Equal(t, tt.wantCalls, repo.CreateCalls)
+			assert.Zero(t, repo.CollisionsRemaining)
 
-	setupRouter(repo).ServeHTTP(recorder, req)
+			if tt.wantStatus == http.StatusInternalServerError {
+				assert.Nil(t, repo.CreatedURL)
+				assert.Equal(t, "Failed to create URL\n", recorder.Body.String())
+				return
+			}
 
-	require.Equal(t, http.StatusCreated, recorder.Code)
+			require.NotNil(t, repo.CreatedURL)
+			assert.Equal(t, "https://example.com", repo.CreatedURL.OriginalURL)
+			assert.Regexp(t, `^[0-9a-f]{8}$`, repo.CreatedURL.ShortCode)
 
-	assert.Equal(t, 2, repo.CreateCalls)
-
-	require.NotNil(t, repo.CreatedURL)
-
-	assert.Equal(
-		t,
-		"https://example.com",
-		repo.CreatedURL.OriginalURL,
-	)
-
-	assert.Len(t, repo.CreatedURL.ShortCode, 8)
+			var response ShortenResponse
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			assert.Equal(t, "https://example.com", response.OriginalURL)
+			assert.Equal(t, repo.CreatedURL.ShortCode, response.ShortCode)
+		})
+	}
 }
