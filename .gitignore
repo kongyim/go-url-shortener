@@ -23,4 +23,5 @@ crash.log
 # IDE
 .idea/
 .vscode/
+.DS_Store
 
