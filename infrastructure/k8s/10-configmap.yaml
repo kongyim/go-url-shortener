@@ -1,0 +1,7 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: api-config
+  namespace: url-shortener
+data:
+  REDIS_ADDR: "redis.url-shortener.svc.cluster.local:6379"
