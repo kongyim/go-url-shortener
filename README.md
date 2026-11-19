@@ -1,5 +1,8 @@
 # Go URL Shortener
 
+Run locally with [Docker + Terraform](#quick-start-local-docker--terraform) or
+[Kubernetes with kind](#quick-start-local-kubernetes-with-kind).
+
 ## Quick Start (Local Docker + Terraform)
 
 ### Prerequisites
@@ -111,6 +114,259 @@ before destroying the infrastructure. The current PostgreSQL bind mount uses
 `.local/postgres/` in the project root; Terraform destroy leaves that directory
 and its database files on disk.
 
+## Quick Start (Local Kubernetes with kind)
+
+This workflow creates an independent learning environment with two API replicas,
+PostgreSQL 17 with a persistent volume, and an ephemeral Redis cache. The existing
+Docker + Terraform workflow remains available; its database is not migrated into
+Kubernetes. All commands below run from the repository root.
+
+### 1. Check prerequisites and create the cluster
+
+Install Docker, kind, kubectl, and OpenSSL, then start Docker.
+
+```sh
+docker info
+kind version
+kubectl version --client
+openssl version
+kind create cluster --name url-shortener --config infrastructure/k8s/kind-config.yaml
+kubectl config use-context kind-url-shortener
+kubectl get nodes
+kubectl get storageclass standard
+```
+
+Wait for the node to be Ready. The PostgreSQL manifest requires the `standard`
+StorageClass supplied by the kind environment. Confirm the current context is
+`kind-url-shortener` before running subsequent commands.
+
+Do not run `kubectl apply -f infrastructure/k8s/`: `kind-config.yaml` is input to
+kind, not a Kubernetes API resource, and the application has configuration and
+migration prerequisites.
+
+### 2. Build and load the API image
+
+```sh
+docker build -t go-url-shortener:k8s-v1 .
+kind load docker-image go-url-shortener:k8s-v1 --name url-shortener
+```
+
+The API manifest uses this exact tag with `imagePullPolicy: Never`, so the image
+must be loaded into kind before starting the API. No container registry is needed.
+
+### 3. Create configuration and database credentials
+
+```sh
+kubectl apply -f infrastructure/k8s/00-namespace.yaml
+kubectl apply -f infrastructure/k8s/10-configmap.yaml
+```
+
+On the first setup, generate a local password and create the Secret required by
+both PostgreSQL and the API. Hex characters avoid URL-encoding issues in the
+connection string. Run this block in the same shell, with shell tracing disabled:
+
+```sh
+set +x
+K8S_DB_PASSWORD="$(openssl rand -hex 24)"
+printf 'POSTGRES_PASSWORD=%s\nDATABASE_URL=postgres://app:%s@postgres.url-shortener.svc.cluster.local:5432/urlshortener?sslmode=disable\n' \
+  "$K8S_DB_PASSWORD" "$K8S_DB_PASSWORD" \
+  | kubectl -n url-shortener create secret generic url-shortener-db --from-env-file=/dev/stdin
+unset K8S_DB_PASSWORD
+```
+
+Do not commit credentials or exported Secret manifests. Kubernetes Secret base64
+encoding is not encryption. This local example uses a database connection without
+TLS; production needs separate credential and transport-security configuration.
+
+If the Secret already exists, reuse it. Do not generate a replacement password for
+an existing database volume: changing `POSTGRES_PASSWORD` does not change the
+password of an already initialized PostgreSQL user.
+
+`DATABASE_URL` uses the PostgreSQL Service DNS name, and `api-config` supplies the
+Redis Service DNS name. `localhost` inside an API Pod would refer to that Pod,
+not to either database service. No `.env` file is needed in the container.
+
+### 4. Start PostgreSQL and Redis
+
+```sh
+kubectl apply -f infrastructure/k8s/20-postgres.yaml
+kubectl apply -f infrastructure/k8s/30-redis.yaml
+kubectl -n url-shortener rollout status statefulset/postgres --timeout=180s
+kubectl -n url-shortener rollout status deployment/redis --timeout=180s
+kubectl -n url-shortener get pods,pvc,services
+```
+
+PostgreSQL uses a single-replica StatefulSet with a 1 GiB PVC named
+`pgdata-postgres-0`. Redis persistence is disabled because cached URLs can be
+rebuilt from PostgreSQL. Both services are cluster-internal.
+
+### 5. Run the schema migration
+
+Create the SQL ConfigMap from the existing migration file, then run the Job:
+
+```sh
+kubectl -n url-shortener create configmap db-migration-sql \
+  --from-file=001_create_urls.up.sql=migrations/001_create_urls.up.sql \
+  --dry-run=client -o yaml | kubectl apply -f -
+kubectl apply -f infrastructure/k8s/40-migration-job.yaml
+kubectl -n url-shortener wait --for=condition=complete job/db-migrate-001 --timeout=120s
+kubectl -n url-shortener logs job/db-migrate-001
+```
+
+Continue only after the Job completes successfully. The Job mounts the SQL file
+and runs `psql` with `ON_ERROR_STOP=1`, so SQL errors fail the migration. Running
+it separately avoids having every API replica execute migrations at startup.
+The existing `make migrate-up` command targets Docker, not Kubernetes.
+
+Reapplying a completed Job does not execute it again. To rerun migration 001 after
+checking its logs and resolving any errors, delete and recreate the Job:
+
+```sh
+kubectl -n url-shortener delete job db-migrate-001
+kubectl apply -f infrastructure/k8s/40-migration-job.yaml
+kubectl -n url-shortener wait --for=condition=complete job/db-migrate-001 --timeout=120s
+```
+
+Migration 001 uses `CREATE TABLE IF NOT EXISTS`; it does not track migration
+versions or reconcile changes to an existing table. Future schema changes need
+new migrations and a migration-history strategy.
+
+### 6. Deploy and verify the API
+
+```sh
+kubectl apply -f infrastructure/k8s/50-api.yaml
+kubectl -n url-shortener rollout status deployment/api --timeout=180s
+kubectl -n url-shortener get pods
+kubectl -n url-shortener port-forward service/api 18080:8080
+```
+
+Keep port-forward running. In another terminal:
+
+```sh
+curl -i http://127.0.0.1:18080/health
+curl -i http://127.0.0.1:18080/readyz
+curl -i -X POST http://127.0.0.1:18080/shorten \
+  -H 'Content-Type: application/json' \
+  -d '{"url":"https://example.com"}'
+```
+
+Both health endpoints should return `200 OK`; creation should return
+`201 Created`. Copy `shortCode` from the response into the following request:
+
+```sh
+curl -i http://127.0.0.1:18080/YOUR_SHORT_CODE
+```
+
+Expect `302 Found` with `Location: https://example.com`. Do not use `curl -L` if
+you want to inspect the redirect itself.
+
+The API Deployment runs two replicas with these health checks:
+
+- Startup and liveness use `/health`, which checks that HTTP is responding.
+- Readiness uses `/readyz`, which pings PostgreSQL with a 250 ms timeout and
+  returns 503 on failure. It does not check the schema or Redis; Redis errors
+  can still fall back to PostgreSQL.
+- The Pod has a 20-second termination grace period, allowing room for the
+  application's 10-second graceful shutdown timeout.
+
+The application also pings PostgreSQL before starting HTTP and exits on failure.
+A startup probe does not prevent this exit; Kubernetes restarts the container.
+Waiting for PostgreSQL and the migration first avoids this initial failure path.
+
+### 7. Scale, update, and inspect
+
+```sh
+kubectl -n url-shortener scale deployment/api --replicas=3
+kubectl -n url-shortener rollout status deployment/api --timeout=180s
+kubectl -n url-shortener get pods -l app=api
+kubectl -n url-shortener scale deployment/api --replicas=2
+```
+
+Each API replica can open up to 10 database connections. Scaling the API also
+increases potential database load. Reapplying `50-api.yaml` restores its declared
+two replicas.
+
+For an application update, use a new image tag:
+
+```sh
+docker build -t go-url-shortener:k8s-v2 .
+kind load docker-image go-url-shortener:k8s-v2 --name url-shortener
+kubectl -n url-shortener set image deployment/api api=go-url-shortener:k8s-v2
+kubectl -n url-shortener rollout status deployment/api --timeout=180s
+```
+
+After accepting the update, change the image tag in `50-api.yaml` to match;
+otherwise applying that file restores `k8s-v1`. The rolling update allows one
+extra Pod and keeps existing ready replicas available while replacements start.
+To undo a Deployment update:
+
+```sh
+kubectl -n url-shortener rollout undo deployment/api
+kubectl -n url-shortener rollout status deployment/api --timeout=180s
+```
+
+Deployment rollback does not roll back database migrations. Keep the prior image
+available in kind and keep the manifest consistent with the intended version.
+
+Useful diagnostic commands:
+
+```sh
+kubectl -n url-shortener get pods,services,pvc,jobs
+kubectl -n url-shortener describe deployment api
+kubectl -n url-shortener logs -l app=api --tail=100 --prefix=true
+kubectl -n url-shortener logs job/db-migrate-001
+kubectl -n url-shortener get events --sort-by=.metadata.creationTimestamp
+```
+
+For a failing Pod, use `kubectl -n url-shortener describe pod POD_NAME` and
+`kubectl -n url-shortener logs POD_NAME --previous` to inspect restart failures.
+
+| Symptom | Check |
+| --- | --- |
+| `ErrImageNeverPull` | Build and load the exact API image tag into the named kind cluster. |
+| `ImagePullBackOff` | Check registry access for PostgreSQL/Redis images and the Pod events. |
+| `CreateContainerConfigError` | Verify the Secret and ConfigMap names and required keys. |
+| `CrashLoopBackOff` | Inspect previous logs; verify PostgreSQL readiness and database credentials. |
+| PVC remains `Pending` | Describe the PVC and check the `standard` StorageClass and provisioner. |
+| Migration Job fails | Inspect Job logs, database credentials, and the `db-migration-sql` ConfigMap. |
+| API is not ready | Inspect `/readyz`, PostgreSQL connectivity, and Service selectors. |
+| Port-forward stops | Restart it after its selected Pod is replaced. |
+
+Port-forward selects a Pod; it is not a demonstration of load balancing across
+replicas. `/metrics` is JSON with per-process counters that reset on restart,
+not aggregated service metrics or a Prometheus scrape endpoint.
+
+### 8. Clean up and understand persistence
+
+Press Ctrl+C to stop port-forward; this leaves the workloads running. To remove
+only the API while retaining PostgreSQL and Redis:
+
+```sh
+kubectl -n url-shortener delete -f infrastructure/k8s/50-api.yaml
+```
+
+PostgreSQL data survives Pod replacement through its PVC. This local storage is
+not a backup and does not provide database high availability.
+
+**Destructive:** deleting the namespace deletes its PVCs and can delete their
+backing data. Use this only when you no longer need the Kubernetes database:
+
+```sh
+kubectl delete namespace url-shortener
+```
+
+**Destructive:** deleting the kind cluster removes the entire local environment,
+including the database storage inside its node container:
+
+```sh
+kind delete cluster --name url-shortener
+```
+
+These commands do not remove the separate Docker/Terraform `.local/postgres/`
+directory. This single-node setup is intended for local learning. Production
+requires additional work on backups and restore, database availability, image
+publishing, TLS, secret management, access controls, and monitoring.
+
 ## Architecture
 
 The application is built with Go and Gin, using PostgreSQL for persistent URL
@@ -163,7 +419,7 @@ flowchart TD
 | Concurrency | Atomic metrics and Go race-detector checks in CI |
 | Observability | `GET /metrics` with cache hit rate and average lookup latency |
 | Performance | Reproducible cache-hit/cache-miss benchmarks reporting average, p50 and p95 HTTP latency |
-| Infrastructure | Multi-stage Docker build and Terraform-managed local containers/network |
+| Infrastructure | Multi-stage Docker build, Terraform-managed local containers/network, and Kubernetes manifests for kind |
 | CI | GitHub Actions: Go tests, race detector, `go vet`, and Docker image build |
 
 ### Engineering Decisions
