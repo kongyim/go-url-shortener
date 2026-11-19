@@ -82,7 +82,7 @@ func TestRedirectHandlerCache(t *testing.T) {
 			urlCache := &mockURLCache{value: tt.cached, getErr: tt.getErr, setErr: tt.setErr}
 			recorder := httptest.NewRecorder()
 			cacheMetrics := &metrics.CacheMetrics{}
-			setupRouter(repo, urlCache, cacheMetrics).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/abc123", nil))
+			setupRouter(fakePinger{}, repo, urlCache, cacheMetrics).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/abc123", nil))
 
 			stats := cacheMetrics.Snapshot()
 			assert.Equal(t, tt.wantHits, stats.Hits, "cache hits")
@@ -136,7 +136,7 @@ func TestShortenHandlerCache(t *testing.T) {
 			recorder := httptest.NewRecorder()
 			req := httptest.NewRequest(http.MethodPost, "/shorten", strings.NewReader(tt.body))
 			req.Header.Set("Content-Type", "application/json")
-			setupRouter(repo, urlCache, nil).ServeHTTP(recorder, req)
+			setupRouter(fakePinger{}, repo, urlCache, nil).ServeHTTP(recorder, req)
 			require.Equal(t, tt.wantStatus, recorder.Code)
 			assert.Zero(t, urlCache.getCalls)
 			assert.Equal(t, tt.wantWrites, urlCache.setCalls)

@@ -1,0 +1,53 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate-001
+  namespace: url-shortener
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app: db-migrate
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: postgres:17-alpine
+          imagePullPolicy: IfNotPresent
+          command: ["psql"]
+          args:
+            - "-X"
+            - "-v"
+            - "ON_ERROR_STOP=1"
+            - "-f"
+            - "/sql/001_create_urls.up.sql"
+          env:
+            - name: PGHOST
+              value: postgres.url-shortener.svc.cluster.local
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              value: app
+            - name: PGDATABASE
+              value: urlshortener
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: url-shortener-db
+                  key: POSTGRES_PASSWORD
+          volumeMounts:
+            - name: migration-sql
+              mountPath: /sql
+              readOnly: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+      volumes:
+        - name: migration-sql
+          configMap:
+            name: db-migration-sql

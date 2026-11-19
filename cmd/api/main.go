@@ -225,14 +225,14 @@ func metricsHandler(
 	})
 }
 
-func setupRouter(repo URLRepository, urlCache cache.URLCache, cacheMetrics *metrics.CacheMetrics) *gin.Engine {
+func setupRouter(db databasePinger, repo URLRepository, urlCache cache.URLCache, cacheMetrics *metrics.CacheMetrics) *gin.Engine {
 	router := gin.Default()
 	router.HandleMethodNotAllowed = true
 	router.NoMethod(func(c *gin.Context) {
 		switch c.Request.URL.Path {
 		case "/metrics":
 			c.Header("Allow", http.MethodGet)
-		case "/health":
+		case "/health", "/readyz":
 			c.Header("Allow", http.MethodGet)
 		case "/shorten":
 			c.Header("Allow", http.MethodPost)
@@ -244,6 +244,7 @@ func setupRouter(repo URLRepository, urlCache cache.URLCache, cacheMetrics *metr
 		metricsHandler(c, cacheMetrics)
 	})
 	router.GET("/health", healthHandler)
+	router.GET("/readyz", readinessHandler(db))
 	router.POST("/shorten", func(c *gin.Context) {
 		shortenHandler(c, repo, urlCache)
 	})
@@ -294,7 +295,7 @@ func main() {
 
 	cacheMetrics := &metrics.CacheMetrics{}
 
-	router := setupRouter(repo, urlCache, cacheMetrics)
+	router := setupRouter(db, repo, urlCache, cacheMetrics)
 	server := &http.Server{
 		Addr:              ":8080",
 		Handler:           router,
